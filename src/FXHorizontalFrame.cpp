@@ -3,7 +3,7 @@
 *              H o r i z o n t a l   C o n t a i n e r   O b j e c t            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXHorizontalFrame.cpp,v 1.13 2002/01/18 22:43:00 jeroen Exp $            *
+* $Id: FXHorizontalFrame.cpp,v 1.19 2004/02/08 17:29:06 fox Exp $               *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
@@ -30,6 +30,7 @@
 #include "FXPoint.h"
 #include "FXRectangle.h"
 #include "FXRegistry.h"
+#include "FXHash.h"
 #include "FXApp.h"
 #include "FXHorizontalFrame.h"
 
@@ -43,9 +44,11 @@
 */
 
 
-
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXHorizontalFrame) FXHorizontalFrameMap[]={
@@ -65,7 +68,7 @@ FXHorizontalFrame::FXHorizontalFrame(FXComposite* p,FXuint opts,FXint x,FXint y,
 
 
 // Compute minimum width based on child layout hints
-int FXHorizontalFrame::getDefaultWidth(){
+FXint FXHorizontalFrame::getDefaultWidth(){
   register FXint w,wcum,wmax,numc,mw=0;
   register FXWindow* child;
   register FXuint hints;
@@ -93,7 +96,7 @@ int FXHorizontalFrame::getDefaultWidth(){
 
 
 // Compute minimum height based on child layout hints
-int FXHorizontalFrame::getDefaultHeight(){
+FXint FXHorizontalFrame::getDefaultHeight(){
   register FXint h,hmax,mh=0;
   register FXWindow* child;
   register FXuint hints;
@@ -234,4 +237,5 @@ void FXHorizontalFrame::layout(){
   flags&=~FLAG_DIRTY;
   }
 
+}
 
