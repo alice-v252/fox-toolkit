@@ -3,7 +3,7 @@
 *                      P r o g r e s s   D i a l o g   B o x                    *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2001,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 2001,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXProgressDialog.cpp,v 1.8.4.1 2003/06/20 19:02:07 fox Exp $              *
+* $Id: FXProgressDialog.cpp,v 1.22 2005/01/16 16:06:07 fox Exp $                *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -52,8 +54,11 @@
 #define HORZ_PAD 20
 #define VERT_PAD 2
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
 
 
 // Map
@@ -70,6 +75,11 @@ FXDEFMAP(FXProgressDialog) FXProgressDialogMap[]={
 // Object implementation
 FXIMPLEMENT(FXProgressDialog,FXDialogBox,FXProgressDialogMap,ARRAYNUMBER(FXProgressDialogMap))
 
+
+// Serialization
+FXProgressDialog::FXProgressDialog(){
+  cancelled=FALSE;
+  }
 
 
 // Create progress dialog box
@@ -92,14 +102,14 @@ FXProgressDialog::FXProgressDialog(FXWindow* owner,const FXString& caption,const
 // Close dialog, cancelling operation in progress
 long FXProgressDialog::onCmdCancel(FXObject* sender,FXSelector sel,void* ptr){
   FXDialogBox::onCmdCancel(sender,sel,ptr);
-  cancelled=TRUE;
+  setCancelled(TRUE);
   return 1;
   }
 
 
 // Change dial value
 long FXProgressDialog::onCmdSetValue(FXObject*,FXSelector,void* ptr){
-  setProgress((FXuint)(FXuval)ptr);
+  setProgress((FXuint)(FXival)ptr);
   return 1;
   }
 
@@ -131,15 +141,29 @@ long FXProgressDialog::onCmdGetStringValue(FXObject*,FXSelector,void* ptr){
   }
 
 
-// Change the progress message
+// Change the progress message; force it to be displayed immediately
 void FXProgressDialog::setMessage(const FXString& msg){
   message->setText(msg);
+  message->repaint();
+  getApp()->flush();
   }
 
 
 // Get progress message
 FXString FXProgressDialog::getMessage() const {
   return message->getText();
+  }
+
+
+// Change style of the progress bar widget
+void FXProgressDialog::setBarStyle(FXuint style){
+  progress->setBarStyle(style);
+  }
+
+
+// Get style of the progress bar widget
+FXuint FXProgressDialog::getBarStyle() const {
+  return progress->getBarStyle();
   }
 
 
@@ -175,6 +199,8 @@ void FXProgressDialog::increment(FXuint value){
 
 // Destroy it
 FXProgressDialog::~FXProgressDialog(){
-  progress=(FXProgressBar*)-1;
-  message=(FXLabel*)-1;
+  progress=(FXProgressBar*)-1L;
+  message=(FXLabel*)-1L;
   }
+
+}

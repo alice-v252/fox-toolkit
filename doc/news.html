@@ -1,768 +1,546 @@
 <html>
 <head>
-<LINK REL="stylesheet" HREF="styles.css" TYPE="text/css">
-<title>FOX-Toolkit</title>
-<!-- HTML Copyright 2001 Paul Laufer -->
+<link rel="stylesheet" href="page.css" type="text/css">
+<meta NAME="Keywords" CONTENT="3D,graphics,modeling,simulation,computation,research,development,software,multi-platform gui,multi-platform user interface,application toolkit,visualization,rendering">
+<title>News</title>
 </head>
-
-<body bgcolor=#ffffff link=#990033 vlink=#4a73ad alink=#ed004f text=#000000>
-
-<!--header-->
-<table align=center border=0 cellpadding=0 cellspacing=0 width=100% >
-  <tr><td bgcolor=silver colspan=5 align=right height=50><img src=art/oul_grey.gif align=left valign=top width=8 height=8><img src=art/foxlogo.png valign=bottom alt="FOX Toolkit" height=50 width=500 border=0 ></td>
-  	<td bgcolor=#557faa valign=top align=right><img src=art/our.gif width=8 height=8></td>
-  </tr>
-<!-- end header -->
-  <tr>
-    <td bgcolor=#557faa colspan=2 valign=top align=left>&nbsp;</td>
-    <td bgcolor=#557faa colspan=3><font color=#ffffff size=+1><center>
-<!-- Page Title -->
-News
-<!-- End Page Title -->
-    </center></font></td>
-    <td bgcolor=#557faa valign=top align=right>&nbsp;</td>
-  </tr>
-  <tr>
-    <td bgcolor=#557faa colspan=2>&nbsp;</td>
-    <td bgcolor=#ffffff valign=top align=left><img src=art/iul.gif width=8 height=8></td>
-    <td bgcolor=#ffffff>&nbsp;</td>
-    <td bgcolor=#ffffff valign=top align=right><img src=art/iur.gif width=8 height=8></td>
-    <td bgcolor=#557faa width=15>&nbsp;</td>
-  </tr>
-  <tr>
-    <td width=8 bgcolor=#557faa>&nbsp;</td>
-    <td valign=top bgcolor=#557faa link=#ffffff width=150>
-
-<!-- start navbar content -->
-
-	<a href=fox.html><font color=#ffffff>Home</font></a><br>
-	<a href=news.html><font color=#ffffff>News</font></a><br>
-	<a href=download.html><font color=#ffffff>Download</font></a><br>
-	<a href=goals.html><font color=#ffffff>Goals & Approach</font></a><br>
-	<a href=doc.html><font color=#ffffff>Documentation</font></a><br>
-	<a href=faq.html><font color=#ffffff>FAQ</font></a><br>
-	<a href=rex.html><font color=#ffffff>FXRex</font></a><br>
-	<a href=screenshots.html><font color=#ffffff>Screenshots</font></a><br>
-	<br>
-	<a href=adie.html><font color=#ffffff>Adie</font></a><br>
-	<a href=pathfinder.html><font color=#ffffff>PathFinder</font></a><br>
-	<a href=calc.html><font color=#ffffff>FOX Calculator</font></a><br>
-	<br>
-	<a href=projects.html><font color=#ffffff>Projects</font></a><br>
-	<br>
-	<a href='http://fxpy.sourceforge.net'><font color=#ffffff>FXPy</font></a><br>
-	<a href='http://fxruby.sourceforge.net'><font color=#ffffff>FXRuby</font></a><br>
-	<a href='http://eiffelfox.sourceforge.net'><font color=#ffffff>EiffelFox</font></a><br>
-        <a href='http://eevolved.com/foxhole/'><font color=#ffffff>The FOX Hole</font></a><br>
-        <a href='http://takahr.dhis.portside.net/cgi-bin/rwiki.cgi?cmd=view;name=FOX+FAQ'><font color=#ffffff>Japanese Docs</font></a><br>
-	<br>
-	<center>
-	<a href="http://www.eff.org/br"><img SRC="art/freespeach.gif" border=0></a>
-	<p>
-	<a href="http://www.slashdot.org"><img SRC="art/slingerzbutton1.gif" border=0></a>
-	</center>
+<body bgcolor=#ffffff link=#990033 vlink=#990033 alink=#990033 text=#000000>
 
 
-<!-- end navbar content -->
-
-    </td>
-    <td bgcolor=#ffffff>&nbsp;</td>
-    <td valign=top>
-
-<!-- start main window content -->
-<B>February 26, 2002 - New drop: FOX 1.0.0</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
+<!---- TOPIC TITLE WITH LOGO--->
+<table border=0 cellpadding= cellspacing=2 width=100% ><tr><td><a href='http://www.fox-toolkit.org' target=_top><img src='art/foxlogo_small.jpg' border=0></a></td><td width=100% valign=bottom id="HEADLINE"><b>
+News  <A href='news.html' target="_top" align=left><font  size=-2>[Remove Frame]</font></a>
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
 <p>
-Yes, I went to 1.0!!!  Why not?  The code has been *very* stable for a while, and
-its time we called it what it is:- the 1.0 release!
-<p>
-New API's to FXString.  FXString::vscan() and FXString::scan() are API's to parse
-a string via sscanf-style format conventions.  This is very useful in many cases,
-and obviates the need for some complex coding in the past.
-<p>
-New API's to FXRegistry (actually, FXSettings). FXSettings::readFormatEntry() and
-FXSettings::writeFormatEntry() perform sscanf- and sprintf-style access to registry
-database strings.  As with FXString, this obviates the need for complex coding and
-is very compact and convenient.
-<p>
-Removed deprecated functions from fxdefs.h.  The following functions have been
-removed: fxprefix(), fxsuffix(), fxexpand(), fxpathname(), fxdirpart(), fxfiletitle(),
-fxfilepart(), fxfileext(), fxexists(), fxisdir(), fxisfile(), fxbakname(), fxidentical(),
-fxsplit(), fxshortestpath(), fxupdir(), fxabspath(), fxistopdir(), fxgetcurrentdir(),
-fxmkdir(), fxgethomedir(), fxsearchpath().
-These functions have been moved to the file:
-<BLOCKQUOTE>
-<a href="http://www.fox-toolkit.org/ftp/fxdeprecated.h">fxdeprecated.h</a><br>
-</BLOCKQUOTE>
-and
-<BLOCKQUOTE>
-<a href="http://www.fox-toolkit.org/ftp/fxdeprecated.cpp">fxdeprecated.cpp</a><br>
-</BLOCKQUOTE>
-<p>
-Should your application need them, simply include these two files into your project.<br>
-Note, the functions above have better maintained, and easier-to-use equivalents
-in the FXFile namespace.
-<p>
-A new file, vsscanf.cpp, was added for those systems where vsscanf() and its ilk are
-not available.  Under Linux, and other C99 standard compliant C Libraries, this file
-is not used.
-<p>
-Added some missing API's to FXListBox, FXComboBox, and FXTreeListBox; simplified internals
-of these widgets a bit.
-<p>
-Fixed some FXDirBox problems; removed reliance on deprecated API's.
-<p>
-Added a SELECTFILE_MULTIPLE_ALL to FXFileSelector (and FXFileDialog).  This mode
-allows selection of a mix of files and directories.  The mode SELECTFILE_MULTIPLE
-works as before, and selects only multiple, existing filename names (and no
-directories).
-<p>
-Fixed FXPopup focus navigation:- hidden menu items should not be focused upon.
-<p>
-Fixed little biddy problem in FXText and style settings.
-<p>
-Fixed text in FXReplaceDialog and FXSearchDialog; was not proper.
-<p>
-Fixed little problem in FXRex::substitute().
-<p>
-Fixed some minor configure issues.  You can pass overrides for JPEGLIB,
-PNGLIB, TIFFLIB, ZLIB, and MATHLIB.  This is useful if you want to force
-a different library than the one found in the usual places (for example
-if you loaded a newer version than your system came with, or want to
-force static linking, etc.).<br>
-Also added a test to search for vsscanf() function in your C library.
-<p>
-Added quick-and-dirty, ad-hoc, "hack" to Adie for syntax coloring.  It still
-piggy-backs on the timer.
-However, the dialogs to set up highlight styles, language recognition,
-and syntax patterns is essentially complete.<br>
-You can now add and remove, and edit syntax patterns fairly reliably.
-I added a sample C++ and C syntax file you can drop into your .foxrc/Adie
-registry (or in any of the usual global registry places /usr/lib/foxrc/Adie,
-/usr/local/lib/foxrc/Adie, etc.) to kick-start some patterns to
-get you started.<br>
-The stylizer can now also use patterns with back-references, or capturing
-parentheses; I will still figure some way to color captured parentheses
-some day as well.
-<p>
-WANTED: syntax patterns for various languages: PERL, RUBY, PYTHON, HTML,
-XML, Pascal, Eiffel, and whatever else you can think of.  I will collect these
-patterns and distribute them in future versions of Adie.
-</DIV>
-
-<p>
-<p>
-<B>February 5, 2002 - New drop: FOX 0.99.193</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
-<p>
-Added new mode SWITCHER_HCOLLAPSE and SWITCHER_VCOLLAPSE to FXSwitcher; these
-will cause the FXSwitcher to collapse its default height or width to the currently
-active child's height or width, respectively.
-<p>
-Fixed bug in FXDriveBox.  The option to report errors went away as FXDriveBox
-does not set the current drive anymore:- it just sends a message.
-<p>
-Fixed declaration in FXStringDict API: API's yield const strings.
-<p>
-Added support for SGI IRIS RGB Image input and output, as well as corresponding
-image and icon classes.
-<p>
-Completed editing of style-entries in Adie (language mode and pattern panels
-not complete yet).  Minor style-coloring engine improvements.
-<p>
-Incorporated documentation man-page for Adie, PathFinder, and Calculator.
-<p>
-Fixed bug in FXText::changeStyle.
-<p>
-Added missing API's to FXListBox, FXTreeListBox, FXComboBox.
-<p>
-Fixed grooved border drawing.
-<p>
-Relaxed syntax of section and group name in FXSettings
-database [was too strict earlier for no good reason].
-<p>
-FXWindow issues SEL_MOTION events.
-<p>
-FXRex properly observes REX_NEWLINE for \D, \s, \W, and so on.
-</DIV>
+<!--- TOPIC TITLE WITH LOGO --->
 
 
+<!--- TOPIC TITLE -->
 <p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+Febuary 7 - FOX STABLE 1.4.0
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
 <p>
-<B>January 8, 2002 - New drop: FOX 0.99.189</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
-<p>
-Optional <b><em>style buffer</em></b> was added.  FXText takes roughly
-same amount of memory/text, unless style buffer is turned
-on in which case memory usage doubles to store the style
-information.
-
-<p>
-<b><em>Style table</em></b> support was added.  You can specify up to 127
-different styles, where a style is a combination of fg/bg
-colors for normal, selected, or highlighted display, i.e.
-6 different colors.
-<p>
-<b><em>Line number display</em></b>.  The colors of the line numbers may
-be set.  The number of columns reserved for the numbers
-be be set as well.
-
-Setting the number of columns to zero turns line numbers off.
-
-<p>
-<b><em>Active line background</em></b> coloring.
-The line containing the cursor can be given a different
-background.
-
-<p>
-New API's added to manipulate contents of the style buffer.
-First, normal API's like appendText() and so on now have
-an equivalent appendStyledText(). The style is a single
-value 0-127 indexing into style table, to which 128 may
-be added to achieve underlining. This makes it very easy to
-add colorful text....
-<p>
-Its still possible I will add flags to the style table
-for underlining instead of use a bit in the style buffer;
-I don't know yet...
-<p>
-changeStyle() changes the style w/o affecting the text.
-<p>
-Despite the style additions, drawing has actually been
-speeded up quite a bit, as some old crap has been removed:
+<!--- TOPIC TITLE -->
+Well, after another last-minute feature got snuck in over the weekend, I'm pleased
+to present the new major stable release, the <b>FOX Toolkit version 1.4</b>!<br>
+This release is going to make a lot of people happy, since we've accomplished quite a bit
+of work since the 1.2 release!<br>
 <ul>
-<li>
-drawing is split into painting the background and painting
-the text over it.  This may alleviate some problems on
-SGI with XDrawImageString.
-<li>
-drawing no longer loops over virtual characters, it just
-rect-fills the tail-end of a line; this is of course much
-faster.
-<li>
-even better, drawing also accumulates runs of spaces and
-tabs into a single rect-fill; needless to say that is also
-much faster.
-</ul>
-<p>
-FXText now maintains a cursor column in terms of the indent
-offset from the row start, rather than byte offset.  This
-means that while moving up/down in the buffer the preferred
-column is much better observed when tabs are around (it
-can't be perfect as we can not move the cursor in the middle
-of a tab!).
-<p>
-incremental movement of the selection/highlight is now much
-better optimized:- special cases for when the highlight
-overlaps (e.g. extended by being dragged), v.s. disjunct
-is now taken care off.
-<p>
-also minor buglet caused tail-end of line to be exposed when
-the last character was highlighted, this was fixed also.
-<p>
-FXText no longer sends SEL_REPLACED. instead, it sends SEL_DELETED
-followed by SEL_INSERTED.
-
-obviously, this is better as it allows for inspection of the new
-buffer contents in SEL_INSERTED.
-
-[You need to be able to inspect the buffer after a change so you
-can update the style info......].
-
-<p>
-Slight optimization in setCursorPos().  Don't recompute
-start/end unless changing to another line.
-
-<p>
-When using style tables, if a style color is set to "clear"
-i.e. FXRGBA(0,0,0,0) or simply 0, then the color used will
-automatically fallback to the regular build-in color.
-
-Thus, you can specify colors with a minimum amount of work.
-</DIV>
-
-<p>
-<p>
-<B>December 31, 2001 - New drop: FOX 0.99.188</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
-<p>
-Made some minor API changes to FXRex::match.  It can now scan not ony forward
-and backward in a smaller subrange of the entire string; it can also perform
-just a single match attempt when the subrange is empty.  Scanning a subrange
-of the string is useful, as its not the same as just passing in a smaller string!
-<p>
-A new flag REX_VERBATIM was added to <a href="rex.html">FXRex</a>.  This compiles a pattern with no
-interpretation of magic characters or escape codes.  Useful to apply the FXRex
-machinery to literal strings. Note that case-insensitive flag may still be used!
-<p>
-Added REX_SYNTAX mode to <a href="rex.html">FXRex</a> also.
-This causes FXRex to perform only a syntax check; compiling the pattern takes roughly
-twice the time as just syntax checking it.
-<p>
-Added REX_NOT_EMPTY.  This causes match to fail when matching empty string.
-Changed MATCH_FORWARD to REX_FORWARD for consistency.
-Added more documentation for <a href="rex.html">FXRex</a> as well.
-<p>
-Added regular expression search and replace capability to FXText; FXText::findText() API
-may still need some minor revision, however!
-<P>
-Found & fixed nasty little bug in FXFileDict.  Was never noticed on UNIX systems
-by pure chance.
-<P>
-Dropped fxregex.h.  It is obsoleted by <a href="rex.html">FXRex</a>.
-<a href="rex.html">FXRex</a> is a more powerful matcher, and is easier to use to as well.
-If you still need the old files, they're available as
-<A href='http://www.fox-toolkit.org/ftp/fxregex.h'>fxregex.h</A> and
-<A href='http://www.fox-toolkit.org/ftp/fxregex.cpp'>fxregex.cpp</A> should you need them;
-I recommend however to switch to FXRex so as to be able take advantage of PERL-compatible syntax.
-<p>
-FXList now allows arbitrary icon sizes to be mixed.  This also means when using
-subclasses items, they don't have to be all the same size!
-<p>
-Added facility in FXScrollArea for subclasses to easily map the mouse wheel to
-horizontal scrolling instead of the default vertical scrolling (when wheeling
-inside the widget).
-<p>
-Fixed drawIconShaded for WIN32; the pattern offset must be adjusted when scrolling.
-<p>
-Added API drawFocusRectangle to FXDC.  This is now used everywhere to draw a dotted
-rectangle.  Hopefully this fixes bad-looking focus rectangle under Windows.
-The drawFocusRectangle() API was removed from FXFrame as it is now part of FXDC.
-<p>
-Fixed a few warnings, and one uninitialized memory read in FXTable.
-<p>
-Completed FXSlider tickmark drawing.  If tickmark delta set to 0 (zero), the
-ticks will be placed at each position in the logical range; otherwise, they're
-placed every delta units in the logical range.
-<p>
-Fixed FXFile::isExecutable() API (and similar ones like isOwnerExecutable()).
-The POSIX function access() was not working as advertised under Windows.
-<p>
-FXMessageBox buttons rearranged in the order according to FOX style guidelines.
-<p>
-FXLabel::onHotKeyPress() was not moving the focus to the following widget if the
-widget was a composite, only if the sibling was a simple control.  This caused
-label-mnemonics not to move the focus correctly when the next focusable control
-was in a composite.
-<P>
-FXReplaceDialog.  Small accelerator conflict fixed.
-<P>
-Warnings in fxpcxio.cpp fixed.
-</DIV>
-
-<p>
-<p>
-<B>December 19, 2001 - New drop: FOX 0.99.187</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
-<p>
-The new class <a href=rex.html>FXRex</a> for regular expressions is now finished.<br>
-FXRex is a more modern matching engine, adding back-references, lazy or greedy
-matches, counted repeats, PERL-compatible character classes, escape codes for control-codes,
-hexadecimal or octal character entry, zero-width assertions, positive or negative look ahead,
-non-capturing and capturing parentheses, "cloistered" modes, and more.<br>
-FXRex is also thread-safe: not only are no global variables used, but also can one FXRex-variable
-be used by multiple threads.<br>
-FXRex allows unlimited pattern sizes, can search forward and backward through a subject
-string, returns proper syntax error codes, allows for multi-line and case-insensitive
-matching.<br>
-FXRex is 8-bit safe (including end-of-strinf character), so you can use it on binary data.<br>
-You can enter control-characters, octal or hexadecimal characters in the pattern.
-<p>
-Added documentation to FXRex class.
-<P>
-More small additions to FXFileDialog.
-<p>
-FXText much improved brace matching technique.  Also added highlight capability,
-i.e. a new text style.  This also has its own colors.  It is currently used
-for the new brace matching method.
-<p>
-Added support in Adie for the above.  Note brace match time must now be set
-in milliseconds, not microseconds.
-<p>
-Added method to FXInputDialog to set text field width.
-<p>
-Bullet-proofed FXString::left(), FXString::right(), FXString::mid(), and FXString::trunc()
-against bad arguments.
-<p>
-<p>
-Fixed bug in FXTable drawing loops; references were made outside the cell array.
-<p>
-Fixed potential bug in ICO loader.
-<p>
-Added argument to FXApp::init() to suppress opening display.  You can open display
-later using FXApp::openDisplay().  This allows FOX GUI's to start in non-GUI mode.
-</DIV>
-
-<P>
-<BR>
-<B>December 10, 2001 - FOX 0.99.182</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
-<P>
-FXFileDialog supports context popup menu, adds copy, move, delete capability.
-<p>
-FXFile::concatenate bug fixed.
-<p>
-FXImage::getChannels() API added.
-<p>
-FXImage::setPixel(), FXImage::getPixel() API's added.
-<p>
-Small fixes to FXTGAImage, etc.
-<p>
-FXFileDict.  Compile-time option to enable all available image formats; see INSTALL file.
-<p>
-FXGLCanvas swapbuffers bug fix for Windows 2000/NT (in) compatibility.
-<p>
-Other stuff that has been reported in the past couple of weeks.
-</DIV>
-
-<P>
-<BR>
-<B>November 27, 2001 - FOX 0.99.181</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
-<P>
-Widgets like FXText, FXTextField, and so on which absorb the Return key now make
-the default button loose the fat border.
-<p>
-The Return key is now reported to the default widget as ordinary SEL_KEYPRESS or
-SEL_KEYRELEASE messages.
-<p>
-The ID_INSERT_CHAR message in FXText and FXTextField has been deleted; a new message
-ID_OVERST_STRING has been added to implement overstrike mode capability.
-The overstrike mode in FXText is now more sophisticated about spaces and tabs.
-<p>
-Added API's to FXImage: setPixel() and getPixel() to access image buffer on pixel
-by pixel basis.
-<p>
-Corrected API's to FXGLSphere.
-<p>
-Made ctx member of FXGLCanvas and FXGLContext protected.
-<p>
-Added some screen shots.
-<p>
-Made data() public in FXSettings; this is needed to write iterations over all
-sections.
-</DIV>
-
-<P>
-<BR>
-<B>November 22, 2001 - FOX 0.99.180</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
-<P>
-Janusz Ganczarski has donated support for the TARGA image file format;
-this brings FOX's image support up to the following list:
-<blockquote>
-BMP, GIF, XPM, PCX, JPG, PNG, ICO, TIFF, and TARGA.
-</blockquote>
-<P>
-Note to MS-Windows users: FOX supports not only BMP images and
-icons, but also ICO format.  This means you can design icons directly
-with VC++ built-in icon editor.
-<P>
-FXJPEGImage, FXJPEGIcon renamed to FXJPGImage, FXJPGIcon [but a typedef
-should keep your app compiling].
-<P>
-FOX now properly handles <b>default buttons</b>.  The default button is
-the one responding to the Return key in a dialog.
-You can designate any number of buttons to become the default button when
-the focus moves into it.
-One special button is called the initial default button; the initial
-default button is the button that will initially be the default button.
-It is also the button to which the default returns when the keyboard
-focus moves to another control.<br>
-For this purpose, the meaning of the old BUTTON_DEFAULT flag has been
-changed to mean that the button MAY become the default
-button.  A new flag BUTTON_INITIAL means the button is the INITIAL default
-button.
-<P>
-New API's are available to set initial default widgets:
-<p>
-<blockquote>
-<b>setInitial(enable)</b>
-<p>
-This makes the window the initial default window, i.e. the target for the
-Return key.
-<p>
-<b>isInitial()</b>
-<p>
-This determines if the widget is the initial default window.
-<p>
-<b>setDefault(enable)</b>
-<p>
-This sets the widget to the default widget if enable is TRUE; if enable is
-FALSE, it makes the widget normal again; if enable is MAYBE, the default
-returns to the initial default window.
-<p>
-<b>isDefault()</b>
-<p>
-This returns true if the window is the default, i.e. the window which will
-get the Return key even if the focus is on another control.  Of course it
-will not get the Return key if the other control handles the Return key.
-</blockquote>
-<p>
-Only one window can be the initial default, and only one window can be
-the default.
-<p>
-FXGLObject now starts counting at message ID=10000, this means you can make
-your FXGLViewer subclass start counting from FXGLViewer::ID_LAST, just as
-you would with any other subclassed widget.
-<P>
-FXStatusline and FXProgressBar now automatically call repaint() and
-flush() so you won't have to.  This is useful to update these widgets
-while performing a long callback routine [e.g. reading a file].
-<P>
-FXSectionDict has disappeared.  Basically, its only use was in FXSettings;
-what has happened is that FXSettings now derives from FXDict directly, and
-takes over all of FXSectionDict's functionality.
-<p>
-Fixed focus navigation in FXTopWindow.
-<p>
-Focus navigation in FXMatrix was moving to incorrect widget.
-<p>
-FXText could read out-of-bounds when searching.
-<p>
-Note, I did not implement Daniel Gehriger's menu patch yet; still looking at
-that issue some more.
-</DIV>
-
-<P>
-<BR>
-<B>November 13, 2001 - FOX 0.99.179</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
-Integrated Daniel Gehriger's keyboard patches.  The fxkeyval API has now been
-removed:- instead, a new member "text" was added to FXEvent which contains the
-translated keyboard symbol(s).
-<p>
-The header file organization has been changed to allow programs to include only
-those widgets which are needed.
-<p>
-A resource leak in OpenGL context has been removed (under Windows).
-<p>
-The style BUTTON_DEFAULT causes a button to have the focus first time around;
-buttons which have the focus are drawn with a FAT border and respond to the
-Enter key.
-<p>
-The flag MENU_DEFAULT, and the setDefault() and setOther() API's have been removed.
-<p>
-The new API FXWindow::isDefault() returns TRUE if the widget is in
-the focus chain.
-<p>
-Updated project files for VC++.
-<p>
-Added stub-icon/images to be shown when JPEG, PNG, or TIFF libraries are not available;
-the stub images allow programs which use FXJPEGImage, FXPNGImage, and FXTIFImage to work
-with reduced functionality when the necessary libraries are not available.
-</DIV>
-
-<P>
-<BR>
-<B>October 19, 2001 - FOX 0.99.177</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
-Some minor bugfixes. Visual Studio Project files were broken and now fixed.
-</DIV>
-<P>
-<BR>
-<B>October 16, 2001 - New drop: FOX 0.99.176</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
-<p>
-Due to the amount of time elapsed since last drop, there have been a lot of new
-things; for starters, we have some new widgets:
-<ul>
-<li>FXColorBar.
-This widget controls the brightness of a certain color in the
-hue, saturation, value system of color specification.<BR>
-<li>FXColorWheel.
-This widget controls the hue and saturation of a color in the
-hue, saturation, value system of color specification.<BR>
-<li>FXPicker.  FXPicker is used to select stuff anywhere on the screen.
-Basically, you click once to activate it, and move to a location you want to
-identify, then click again.<BR>
-<br>
-FXPicker reports the identified location using SEL_COMMAND, and updates
-while moving with SEL_CHANGED.<BR>
+<li><b>Smooth dragging</b> and <b>side-by-side docking</b> of toolbars and dockable panels 
+has been implemented.</li>
+<li>A new class <b>FXIconSource</b> facilitates loading and scaling of images or icons, 
+from a large variety of image formats.</li>
+<li>The file selection widget now support <b>thumbnail previewing</b> mode.  If a filename is
+recognized as an image, and the thumbnail mode is in effect, the image is loaded and
+scaled down to serve as the thumbnail. </li>
+<li>Support was added for <b>shaped windows</b>, allowing you to make non-rectangular windows.</li>
+<li>Thread support was augmented with synchronization primitives and a <b>global application
+mutex</b> was added to deconflict worker threads and GUI thread.<br>
+Also, a new class <b>FXGUISignal</b> serves to wake the GUI thread from a worker thread.</li>
+<li><b>Editable cell</b> support were added for the Table widgets.</li>
+<li><b>SUN Raster</b> image and <b>Amiga IFF</b> image file formats have been added.</li>
+<li>Upgraded to <b>XDND release 5</b>, the latest specification of the XDND standard; interoperability
+with OpenOffice has been accomplished.</li>
+<li><b>Exception handling</b> for common resource errors was introduced, allowing FOX programs
+to gracefully handle various runtime errors like running out of window handles and bitmaps and so on.</li>
+<li>Added alpha channel support for TGA format.</li>
+<li>New <b>7 Segment Display</b> widget was added.  It is arbitrarily scalable.</li>
+<li><b>Ruler widget</b> was completed.  This is a document ruler widget a-la MS-Word.</li>
+<li>New class added for support of <b>Memory Mapped Files</b>.  This sure helps with 
+manipulating large blocks of data in a platform-independent way.</li>
+<li>New class <b>FXSplashWindow</b> has been added.  It uses the new shaped window 
+facility to present an attractive, arbitrarily shaped introduction window for your
+application.</li>
 </ul>
 
-<p>Janusz Ganczarski donated support for Windows ICO format support;
-we have both an FXICOIcon and FXICOImage classes.
-<br>
-This is an important contribution because now you can create your
-icons simply from within VC++ or so without any other conversion
-step (other than the usual reswrap).<BR>
 
-<p>
-A huge amount of improvement to FXTable has been performed; we have
-more to do, but here's what's been done that you can now start to
-play with:
 
+<!--- TOPIC TITLE -->
 <p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+Febuary 7 - FOX DEVELOPMENT 1.4.0
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
 <ul>
-<li>Table items support multiple-line text.
-<li>Items can contain icons.
-<li>Items can have all the usual internal layout, i.e.
-left,right,top,bottom, icon and text relative to each other
-BEFORE, AFTER, ABOVE, BELOW.
-<li>Items can have button appearance.
-<li>Items can have borders (each side is individually selectable).
-<li>Icons may be owned by the item or shared.
-<li>Items may have many different hatch-pattern backgrounds.
+<li>Added thumbnail icon previewing mode to FXFileList, when set in big icon mode.
+This feature uses the new FXIconSource for the loading and scaling.<br>
+Also has blending of PNG images over the current FXFileList background color, which
+looks pretty good.  Other image types are not blended.  It is quite fast for
+loading icons, but a bit tardy for directories with large collections of photographs.</li>
+
+<li>Changed setIcon API's in the various list widgets.  An optional owned flag is
+now passed. If the old icon was owned by the list item, it is deleted, and
+replaced by the new icon.  If the new icon is set to be owned, it will be
+deleted when the list item is deleted, or when it in its turn is replaced when a
+new icon is set. As a special case, resetting the same icon does not
+delete the icon but just changes the owned flag; this allows the application
+to "reposses" or "disown" the icon.</li>
+
+<li>Also added a new class, FXIconSource, which embodies the knowledge
+of various image file formats.  It has three main API's: loading an icon
+from a file, loading an icon from a reswrapped stream, or loading an icon 
+from an already opened FXStream.<br>
+These API's are in turn invoked by three other API's, which can load and
+scale an icon down to a certain size, using either the fast image
+rescaler or the slower high-quality scaler. <br>
+These six API's are duplicated for loading images instead of icons.<br>
+Finally, the core loading API's are virtual so that the FXIconSource may
+be subclassed to provide additional image format support.</li>
+
+<li>Split off FXIconDict into its own class, and reorganized it to use the
+new FXIconSource class.  Consequently a set of API's has been added to
+FXIconDict to set/get the FXIconSource.<br>
+FXIconDict manages the lifetime of the FXIconSource object it uses; initially,
+it creates its own icon source.</li>
+
+<li>Every time I explain the new toolbar system to someone, I say "dock site"
+when I meant FXToolBarDock.  Obviously, the latter is the wrong name.
+As of today, there is another reason why this name is not ideal and that is
+that I have added another class, FXDockBar, which is basically a general-
+purpose FXPacker with docking capabilities.  </br>
+FXToolBar now derives from that, adding just the reorientation capabilities
+to the FXDockBar's capabilities.  <br>
+So now we have a general purpose packer that can be floated, we need a different-
+looking handle to move it around, and indeed, that is another class now which
+is another flavor of FXToolBarGrip called FXDockTitle.  This serves as
+both decorative title as well as a grip for moving the bar. <br>
+We reserve the toolbar grip for small handle-bars inside FXToolBars.</li>
+
+<li>FXMenuTitle now pops its FXMenuPane to the side depending on where the
+FXMenuBar containing the FXMenuTitle is docked.  The idea is to prevent
+obscuring the other FXMenuTitles and to try and make sure the mouse is
+not over the menu pane when first popped up; the latter is potentially
+dangerous since the risk exists of accidentally invoking a menu option
+by releasing, without movement, the mouse button [under normal circumstances
+pressing and releasing the mouse lets the panel stay up; but if the panel
+appears right under the cursor, a menu option may be invoked instead].</li>
+<li>A few more toolbar docking issues; first, toolbars which are stretched
+should undock only when their default size sticks out, or oscillation will
+result.  Next, new API's have been added to FXToolBarDock which adjust the
+layout options of the remaining items in the dock when toolbars are undocked
+or docked.<br>
+Finally, when releasing the mouse in the toolbar grip, the toolbar was not
+docking at the same place as it was when the timer expired.  This has now
+been fixed.</li>
+
+<li>Refactored the code a bit between FXToolBar and FXDockSite.  Its FXDockSite's
+responsibility to know about the interpretation of the layout issues of the
+toolbar inside of itself; this means FXDockSite needs to be informed when
+toolbars dock and undock, or are moved around.  It falls upon FXToolBar to
+find which dock should be attempted, and to determine based on heuristic
+fudge constants when something docks or undocks.  We now have a single
+internal function which decides dock/no dock. While not perfect, it can
+be counted upon to give the same answer solely based on the relative
+relationships of toolbar and dock, regardless of whether we're docking
+or undocking.  It is hoped that this prevents oscillation as much as
+possible.</li>
+
+<li>Finally, we have a new option in the right-mouse popup menu over
+FXToolBarGrip which gives the user the ability to flip the orientation
+of the toolbar without having to dock it.</li>
+<li>Fixed bug to allow dragging even when no alternate parent has
+been specified; you should be able to reorganize the layout inside
+a dock site even if floating is not an option.</li>
+<li>Hold Control key while dragging toolbars to prevent docking; this
+allows parking toolbars near edges of the main window where they would
+otherwise have docked.</li>
+
+<li>Drag and drop between FOX and <a href="http://www.openoffice.org">OpenOffice</a>
+works too!<br>
+OpenOffice appears to be using XDND 5. also.  I've managed to drag both text from
+Adie as well as JPEG image files via PathFinder into OpenOffice; I think I may get
+used to this!.</li>
+
+<li>Fixed bug in drawEllipse() on Windows; thanks to Mauro Zecchini
+for discovering this problem.</li>
+
+<li>FXFile::search() now expands environment variables (e.g. $HOME) and user names (e.g. ~user)
+in directories from the search path.</li>
+
 </ul>
 
+
+<!--- TOPIC TITLE -->
 <p>
-For the table itself:
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+Januari 31 - FOX DEVELOPMENT 1.3.26
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
 <ul>
-<li>Rows and columns may be resized interactively.
-<li>Even/odd cells background coloring.
-<li>Leading/trailing fixed rows and/or columns.
-<li>Empty (NULL) cells are now possible; a new item will be
-automatically created when you fill it with text/icon.
-<li>Budding support for so-called spanning cells; that is to
-say, a single item may span multiple rows and/or columns.
+<li>Upgraded to <a href="http://www.newplanetsoftware.com/xdnd/">XDND</a> version
+5 standard.  Verified interoperation between KDE and FOX, as well as GTK and FOX.
+using application/x-color drag.  Unfortunately, GTK does not accept color drags
+from FOX, but FOX does accept color drags from GTK.  The problem is GTK, since
+it doesn't accept color drags from KDE either.<br>
+XDND version 5 brings a final confirmation in response to endDrag().
+It is possible that the drop target, in processing the drop, encounters some
+sort of error.  The XDND 5 implementation in FOX allows the drop target to
+call acceptDrop(), indication which action the target DID manage to
+perform.<br>
+For example, when attempting to move a file from one place to another, the
+drop target may accept a drop but be unable to perform it [e.g. running
+out of disk space].  Returning DRAG_REJECT will allow the drop target to
+tell the drag source it was unsuccessful, and that it should remove the
+original file<br>
+Note that we used to perform such a thing by trying to obtain TWO DND data's
+from the source, the real data and NULL data using the "DELETE" atom.</li>
+<li>FXSettings, doesn't quote values unless leading and trailing spaces
+or special characters in it.</li>
+<li>Updated Control Panel with capability to set file bindings; thanks
+to Sander for this!</li>
+<li>Minor tweaks to toolbar dragging.</li>
 </ul>
 
+
+<!--- TOPIC TITLE -->
 <p>
-Popup menus improved under Windows, thanks to Daniel Gehriger.
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+Januari 30 - FOX DEVELOPMENT 1.3.25
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
+<ul>
+<li>Changed algorithm that determines when a toolbar docks.  For a horizontal
+dock site, the new algorithm docks the toolbar when the upper or lower edge
+of the bar falls inside the dock (with a slight amount of fudge since dock
+sites may be collapsed to 0 pixels when there's no bar inside), and when the
+bar doesn't stick out too much (mostly overlaps with the dock horizontally).</li>
+<li>Also added some small icons to the toolbar grip docking menu.</li>
+<li>Implemented workaround for grab-lost problems which happen under X11 when
+a window which is grabbed is docked or undocked.  The workaround appear to
+really kill the issue dead and the opaque-dragging toolbars work just super
+now.</li>
+<li>LAYOUT_DOCK_NEXT and LAYOUT_DOCK_SAME options conflicted with other
+layout options.  One of the two reserved flag bits has now been used.</li>
+<li>Removed the undock timer.  Undocking now happens immediately, but docking
+is still done with a timer since we shouldn't dock just casually dragging
+a toolbar across a dock site by accident.</li>
+<li>Docking back now happens not only when hovering near a dock area, but also when
+you release the toolbar grip near a dock area.</li>
+<li>FXMenuTitle now pops its FXMenuPane besides itself instead of below, if the menubar
+is oriented vertically.</li>
+<li>Fixed SUN Solaris build issue with FXGUISignal class.</li>
+</ul>
+
+<!--- TOPIC TITLE -->
+<p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+Januari 28 - FOX DEVELOPMENT 1.3.24
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
+<ul>
+<li>Reintroduced FXTextCodec's.  These were not be part of official 1.4 API, but apparently
+were being used by the FOX based <a href="http://swtfox.sourceforge.net">SWT Widget Set</a>
+for the <a href="http://www.eclipse.org">Eclipse Project</a>.
+Note that FXWString really <em>is</em> permanently gone:- FOX 1.5 will take a different approach
+to unicode support.</li>
+<li>Fixed Borland C++ build issues and some Borland C++ specific compiler warnings.</li>
+<li>Fixed Visual C++ build issues.</li>
+</ul>
+
+
+<!--- TOPIC TITLE -->
+<p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+Januari 27 - FOX DEVELOPMENT 1.3.23
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
+<ul>
+<li>Added new class, FXGUISignal, which allows an FXThread to awaken the FOX GUI and
+cause it to run some callback message handler.  Any number of FXGUISignals may be
+installed.</li>
+<li>Changed FXToolBar class for docking/floating behaviour against FXToolBarDock.</li>
+<li>Added new class called FXToolBarDock.  FXToolBarDock implements rearranging of FXToolBars
+inside of it.  FXToolBarDock is meant to be placed against the sides of an FXTopWindow
+where docking of toolbars and menubars is to be allowed.  FXToolBarDock arranges
+FXToolBar in multiple galleys or rows.  Each galley can have one or more FXToolBar
+widgets parked side-by-side.<br>
+When space runs out, FXToolBarDock adjusts the number of toolbars on each galley
+by placing the last bar on the galley onto the next galley down until each
+galley fits.</li>
+<li>Added new API's to FXUndoList and FXCommand to allow merging of undo records.
+The undo records can be made mergeable by implementing canMerge() and mergeWith()
+API's in your subclass of FXCommand.  FXUndoList uses these to merge two
+records when adding a new FXCommand to the undo list.</li>
+<li>Added before() and after() API's to FXWindow to allow testing of order of
+sinbling windows.</li>
+<li>Changed reparent() function to have extra argument.  The new reparent() API makes
+it possible to insert a widget at any location in the widget tree with a single
+call.  If the widget keeps the same parent, all that happens is a layout recalculation;
+otherwise, the widget is reparented using a call to the native window interface.
+The old linkBefore() and linkAfter() API's are now obsolete.</li>
+<li>Added option MBOX_SAVE_CANCEL_DONTSAVE; patch contributed by Sander.</li>
+<li>Augmented FXStream for long file support.</li>
+<li>Added own replacement strtoll() and strtoull() functions in case not
+available in local C-library.</li>
+<li>64-bit FXlong and FXulong datatypes are now ALWAYS available.</li>
+<li>Updated FXFile, FXFileList, FXDirList for long file support.</li>
+<li>Added FXLongVal, FXULongVal and signed and unsigned long FXStringVal API's
+for FXString.</li>
+<li>Dropped FXWString and old text codecs; these are obsolete now.</li>
+<li>Fixed bug in Windows event processing of WM_MOUSEMOVE.  When mouse was grabbed,
+coordinates were wrong when cursor moves outside of grabbed window.</li>
+<li>Fixed bug in getAppName() and getVendorName() in FXApp and similar
+problems in FXRegistry.</li>
+<li>Upgraded internals of FXIconList, FXList, and FXHeader widgets to use
+FXObjectListOf template class instead of maintaining own array; this saves
+some code.</li>
+<li>Changed many access function to return const FXString&amp; instead
+of FXString.  This eliminates generating a string copy.</li>
+<li>Fixed FXMutex reserved memory size to be sufficient for
+<a href="http://www.ibm.com">IBM PowerPC/AIX</a>.</li>
+</ul>
+
+
+<!--- TOPIC TITLE -->
+<p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+X-Mas Release - FOX DEVELOPMENT 1.3.22
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
+<ul>
+<li>Completed layout computation for FXDockSite widget.</li>
+<li>Fixed highlighting in FXToolBarGrip widget.</li>
+<li>Added API's to FXStream: setBigEndian() and isBigEndian().  These force
+the FXStream into a particular byte order.  Byte swapping will be enabled or
+disabled depending on the endianness of the platform.  The old API isLittleEndian()
+is removed: to determine byte order, just use FOX_BIGENDIAN macro directly.</li>
+<li>Simplify code for FXHorizontalFrame and FXVerticalFrame a little bit.</li>
+</ul>
+
+
+<!--- TOPIC TITLE -->
+<p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+December 21 - FOX STABLE 1.2.13
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
+<ul>
+<li>Backported fixes to 1.2 branch.</li>
+</ul>
+
+
+<!--- TOPIC TITLE -->
+<p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+December 14 - FOX DEVELOPMENT 1.3.21
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
+<ul>
+  <li>In the FX***Image classes, loadPixels() now can be called even after the image
+  has been created already.  It'll resize the server-side pixel storage but not yet
+  call render(), since further manipulations may be desired prior to render().</li>
+  <li>Added new colors to FXApp for selected menu foreground and background.</li>
+  <li>Fixed some long-standing issues with FXPopup menu handling code.  It works
+  better now...</li>
+  <li>Added API's like fxcheckTIF(), fxcheckJPG(), etc. These API's read a portion
+  of the image file from the stream, determine if the image format is recognized,
+  and then rewind the stream back to the same point.  Thus, you can successively
+  try each image type, create the right FXXXXImage class, and call loadPixels().<br>
+  A few of these fxcheckXYZ() API's need some further testing [mostly, due to poorly
+  designed image formats where it is hard to determine the correct type easily].</li>
+  <li>Fixed issues with reswrap: first, when passing a prefix for the resource name,
+  the resource name can start with a digit since the prefix is in front of it.
+  Second, the prefix is now also used when using the <b>-r altname</b> option.
+  Finally, filenames on windows can have mixed <b>\</b> and <b>/</b> path separators.
+  When turning filenames into legal identifiers, we now allow ":" in the name since
+  one could use scope-resolution operator in icon name.</li>
+  <li>FXFile::absolute() no longerdoes tilde or environment expansion; there were
+  cases where this was inappropriate and unexpected.  You can call FXFile::expand()
+  explicitly where desired.
+  <li>FXFileList now shows "." instead of ".." when displaying root of a file system.</li>
+  <li>FXFile::simplify didn't handle cases like <a href="http://slashdot.org">"/."</a> to "/", causing trouble with the
+  change made to FXFileList; we all knew we had to do <a href="http://slashdot.org">slashdot</a> right ;-).</li>
+  <li>FXFileDialog could not select "/" when in Directory selection mode.  Adding "." in
+  the top directory and simplifying "/." to "/" fixed this problem.</li>
+  <li>Changed handling of default color settings; system settings now applied
+  only to settings NOT superceded from FOX Registry.  Also, added support to
+  read a few of the most important color settings from X Defaults database, which
+  means FOX displays in colors as set up by your local window manager. </li>
+  <li>Updated HTML Syntax patterns from Andy Preston.</li>
+  <li>Updated Makefile Syntax patterns.</li>
+  <li>Fixed focus navigation code eating key/modifier combinations other than
+  the ones its supposed to; thanks to chafar@alcances.net for pointing this out.</li>
+  <li>Hmmm, the FLTK people seem to like my <a href="http://cvs.sourceforge.net/viewcvs.py/fltk/fltk/src/Fl.cxx">timer-handling</a>
+  code too ;-)</li>
+</ul>
+
+
+<!--- TOPIC TITLE -->
+<p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+November 29 - FOX DEVELOPMENT 1.3.20
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
+<ul>
+  <li>Fixed problems with FXFileSelector/FXFileDialog; right-mouse popup menu
+  functions Move/Copy/Link/Delete were not quite working right when multiple
+  files were selected. </li>
+  <li>Added overloaded setData() to FXImage which changes shape as well as contents
+  of client-side pixel buffer from given pixel array. </li>
+  <li>Updated FXDockSite.</li>
+  <li>FXFile::getUserDirectory() now uses %USERPROFILE%.</li>
+  <li>Added Python and Makefile patterns to Adie.stx syntax coloring file.</li>
+</ul>
+
+
+<!--- TOPIC TITLE -->
+<p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+November 24 - FOX DEVELOPMENT 1.3.19
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
+<ul>
+  <li>New program, fxdesktop control panel, allows you to set FOX colors and other
+  settings interactively. </li>
+  <li>The quaternion function arc() now returns the quaternion representing
+  the rotation of the two vectors, instead of double the angle of rotation about
+  the same axis. </li>
+  <li>More new functions for manipulation of quaternions.</li>
+  <li>Ascii mode FXRegistry now uses %USERPROFILE% as default location for
+  registry subdirectory.  This affects few FOX programs since on Windows,
+  the normal Windows Registry is used by default.</li>
+  <li>Added support for Xft in glUseFXFont(). It now properly generates OpenGL
+  display list bitmaps for FreeType fonts.</li>
+  <li>Further work in FXFont support for Xft:- now properly fill in properties
+  of the font that matched the desired font.</li>
+  <li>Made some API's in FXGLViewer virtual upon request from ESI-Group.</li>
+  <li>Fixed some HTML highlight pattern for Adie.</li>
+  <li>Read/write ascii based registry from %USERPROFILE%/foxrc on Windows;
+  this is a more logical choice on Windows that %HOME%/.foxrc, which was the
+  old choice.  Note, this only affects programs which use the ascii-based
+  registry on Windows.  Most FOX programs use the Windows Registry and are
+  thus not affected by this change.</li>
+  <li>Fixed problem with FXMessageBox ID_CLICKED_SKIP and ID_CLICKED_SKIPALL.</li>
+  <li>Fixed bug in FXStream usage of FXHash.</li>
+</ul>
+
+
+<!--- TOPIC TITLE -->
+<p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+Halloween Release - FOX DEVELOPMENT 1.3.18
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
+<ul>
+  <li>Important change: consolidated reparentItem(), moveItemBefore(), and moveItemAfter()
+  in FXFoldingList and FXTreeList into a single new API called moveItem().  This is
+  much easier to remember and also allows one to move an item into the right place in
+  the tree in a single call.</li>
+  <li>Another important change: harmonized and simplified item addition API's in FXTreeList,
+  FXFoldingList, and FXTreeListBox.  The new API's are simpler to use, and easier to
+  remember due to more similar naming to similar API's in the other list widgets.</li>
+  <li>Added setHeaders() API's to FXIconList and FXFoldingList.  setHeaders() allows
+  you to populate the entire header control of the list widget with a single call.</li>
+  <li>Fixed slight offset in editable cell text v.s. non-edited cell in FXTable.</li>
+  <li>Added new API's to list widgets.  The new API's fillItems() can be used
+  to populate a list widget with a number of items in one fell swoop.  The new
+  items are appended to the already existing ones.</li>
+  <li>Updated FXSpheref and FXSphered.  including one point at a time now produces
+  smaller bounding spheres.  Also, empty sphere cases are now handled properly.</li>
+  <li>Fixed FXTreeListBox.  When adding or removing items, the field was not updated
+  properly.</li>
+</ul>
+
+
+<!--- TOPIC TITLE -->
+<p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+October 28, 2004 - FOX DEVELOPMENT 1.3.17
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
+<ul>
+  <li>Added editability to FXTable. You can edit cells in the table.  From a
+  user's perspective, editing a cell in FXTable is initiated in a number of
+  different ways:
+  <p>
+  <ul><li>Double-click.  This will create an input control in the cell and
+  allow you to type.</li>
+  <li>Hit F2 function key, or RETURN key.</li>
+  <li>Start typing any printable character.  This works if the input control
+  is a text field; other input controls may drop the input.</li>
+  <li>Send an ID_START_INPUT message to the table.</li></ul><br>
+  The editing ends in one of two ways.  If the input is to be discarded,
+  you can hit the ESC key.  If the input is to be accepted, you can hit
+  RETURN or nativage to the next cell using arrows or TAB keys.</li>
+  <li>Added API's startInput(), cancelInput(), acceptInput() to FXTable.
+  These API's introduce sub-classable input editing for table items to the
+  FXTable class.</li>
+  <li>Added setEditable() and isEditable() API's to FXTable.</li>
+  <li>getColumnX() and getRowY() in FXTable now return proper <em>scrolled</em>
+  x and y positions of the start of a column (row). </li>
+  <li>Removed setColumnX() and setRowY() API's.  Functionality of these API's
+  is more intelligibly supported by calling setColumnWidth() and setColumnHeight().</li>
+  <li>Added new API's to FXTableItem.  The getControlFor() creates and populates a
+  editor control to be used to edit the item.  It is used by FXTable to determine
+  what type of control to use to edit a cell.  By making this virtual, you can
+  make custom FXTableItems which are edited by a control of your choice.<br>
+  The FXTableItem setFromControl() API is used to populate the item from the
+  control.  Its function is to read the control and extract the data into
+  the item.  In typical usage, it is envisioned that getControlFor() and
+  setFromControl() are both reimplemented for subclassed FXTableItems.</li>
+  <li>Added more extensive documentation for FXRegistry.</li>
+  <li>Added center-justification mode to FXTextField.  In addition to right- and
+  left-justified text in the text field, you can now also have centered text.
+  Centered text larger than the text field can scroll both ways.
+  For backward compatibility reasons, the centered mode is only enabled when
+  explicitly passing JUSTIFY_CENTER_X in the setJustify() API [otherwise, all
+  text fields would end up being centered!].</li>
+  <li>Added API changeFocus() to FXWindow; it lets a parent widget know when
+  the focus child is changed.</li>
+  <li>Added new API changeFocus() to FXWindow.  It can be used by a composite
+  widget to know when the focus changes to another child.</li>
+  <li>Added _POSIX_PTHREAD_SEMANTICS for older SUN Solaris thread support.</li>
+  <li>Added some API's in FXXYZStream classes.</li>
+  <li>Defaulted the normal FOX font to "helvetica,90" normally and "Sans,90"
+  when XFT is enabled.</li>
+  <li>Removed deprecated timer and chore API's from FXApp.</li>
+</ul>
+
+
+<!--- TOPIC TITLE -->
+<p>
+<table width=100% cellpadding=0 cellspacing=2><tr><td width=100% valign=bottom id=HEADLINE><b>
+Older News
+<br><img src='art/line.gif' width=100% height=1></b></td></tr></table>
+<p>
+<!--- TOPIC TITLE -->
+<a href="news2.html">Older news...</a>
 
 <p>
-FXFile::listFiles now has many matching modes.
+<center>
+<script type="text/javascript"><!--
+google_ad_client = "pub-3898868524945843";
+google_ad_width = 728;
+google_ad_height = 90;
+google_ad_format = "728x90_as";
+//--></script>
+<script type="text/javascript" src="http://pagead2.googlesyndication.com/pagead/show_ads.js">
+</script>
+</center>
 
+<!--- COPYRIGHT -->
 <p>
-FXFile::simplify() was much improved now; it was not entirely working
-  correctly in all cases.
+<table width=100% cellpadding=0 cellspacing=0><tr><td width=100% valign=top id=HEADLINE align=right>
+<img src='art/line.gif' width=100% height=1><font size=-1>
+Copyright &copy; 1997-2005 Jeroen van der Zijp</font>
+<!-- Begin Nedstat Basic code --><!-- Title: FOX --><!-- URL: http://www.fox-toolkit.org --><script language="JavaScript" src="http://m1.nedstatbasic.net/basic.js"></script>
+<A target=_blank href="http://v1.nedstatbasic.net/stats?ABDZOQqjU2gPjOQDQH/c7z1OusNg"><IMG src="http://m1.nedstatbasic.net/n?id=ABDZOQqjU2gPjOQDQH/c7z1OusNg&p=1&w=1280" border=0 width=18 height=18 align=right></A>
+</td></tr></table>
+</p>
+<!--- COPYRIGHT -->
 
-<p>
-FXColorSelector has been augmented with a hue/saturation dial, a
-  value bar, and a color picker.
-
-<p>
-Off-by-one error fixed in FXDCWindow::drawArc under MS-Windows.
-
-<p>
-FXDCWindow::drawIcon() FXDCWindow::drawIconShader(), FXDCWindow::drawIconSunken()
-have been fixed to take into account the clipping rectangle of the FXDCWindow.
-
-This may in some cases result in slightly faster/more flicker-free drawing, and
-of course it now clips correctly!!
-
-<p>
-Added another ctor to FXMessageBox in case there's no owner widget.
-
-<p>
-FXWindow::hide did not ungrab under Windows.
-
-<p>
-Fixed compile bug for Borland C++.
-
-<p>
-Fixed GUI updating problem in FXListBox, FXComboBox, FXTreeListBox.
-
-<p>
-Fixed problems which occurred when FXIcon, FXImage, FXFont, FXCursor
-resources were being deleted AFTER closing the display; now the destroy()
-function for all resources becomes a NO-OP after the display is closed;
-everything is assumed to be already gone!
-
-<p>
-FXDCPrint::drawImage now implemented for PostScript.
-
-<p>
-Sublt layout bug fixed in FXTabBook:- calculated size was a bit too wide
-given the content size.
-
-<p>
-FXSpinner was sending wrong parameter in message.
-
-<p>
-Extremely subtle buglet in FXSlider fixed.
-
-<p>
-API added to FXGLCanvas to return GL context.
-
-<p>
-FXPacker focus movement had potential infinite loop in it due to typo.
-
-<p>
-FXProgressBar dial mode drawing improved.
-
-<p>
-Drag and drop enabling was in wrong place.
-
-<p>
-Keyboard handling slightly changed; FXComposite now dispatches to accel
-table first before trying focus child.
-
-<p>
-Calculator does keypad now...
-
-<p>
-Adie updates.
-</DIV>
-
-<P>
-<BR>
-<B>August 30, 2001 - FOX 0.99.175</B>
-<BR><HR>
-<DIV CLASS='NEWSSECTION'>
-Many new features were added. FXSearchDialog and FXReplaceDialog now
-maintain a history of previous searches. TextEdit has been renamed to Adie (Advanced
-Interactive Editor). FXText serialization was added. Additions were made to
-the XWindow API to grab the keyboard to a window. A new repaint function was added, which forces painting of part of a window before returning. FXFile and
-FXURL were turned into name spaces. Popups were improved. FXCalculator now
-has its own Web page. Lots of bugfixes were made in FXArrowButton,
-FXScrollbar,FXMDIChild, FXTextField, FXStream, FXFrame, FXPacker, FXTopWindow/FXShell,and FXApp.
-</DIV>
-<P>
-<BR>
-<B>July 19, 2001 - FOX 0.99.174</B>
-<HR>
-<DIV CLASS='NEWSSECTION'>
-FOX has a dedicated web site.  CUPS Printing
-support has been added.  PCX, TIFF, JPEG, XPM
-Image I/O support has been added.  FXProgressBar
-has a dial mode. New Standard dialogs:
-FXProgressDialog, Search and Replace dialogs,
-Input dialog, Directory Selection Dialog have
-been added.  Dockable toolbar support ihas been
-added.  Socket and signal callback message
-support have been added.  Listing files, drive
-letters, and network neighborhood (Windows) have
-been added, and there have been many bug fixes.
-</DIV>
-
-<!-- end main window content -->
-
-    </td>
-    <td bgcolor=#ffffff>&nbsp;</td>
-    <td bgcolor=#557faa width=15>&nbsp;</td>
-  </tr>
-  <tr>
-    <td colspan=2 bgcolor="#557faa" align=center>&nbsp;
-     </td>
-    <td bgcolor=#ffffff valign=bottom align=left><img src=art/ill.gif width=8 height=8></td>
-    <td bgcolor=#ffffff>&nbsp;</td>
-    <td bgcolor=#ffffff valign=bottom align=right><img src=art/ilr.gif width=8 height=8></td>
-    <td bgcolor=#557faa width=15>&nbsp;</td>
-  </tr>
-  <tr>
-    <td valign=bottom align=left bgcolor=#557faa><img src=art/oll.gif width=8 height=8></td>
-    <td colspan=4 bgcolor=#557faa>&nbsp;</td>
-    <td valign=bottom align=right bgcolor=#557faa><img src=art/olr.gif width=8 height=8></td>
-  </tr>
-</table>
-
-<address>Copyright 1997-2002 <a href=mailto:jeroen@fox-toolkit.org>Jeroen van der Zijp</a></address>
-<!-- Created: Mon Apr 10 11:20:32 CEST 2000 -->
-<!-- hhmts start -->
-
-<!-- hhmts end -->
 </body>
 </html>

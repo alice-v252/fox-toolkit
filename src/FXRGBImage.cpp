@@ -3,7 +3,7 @@
 *                     I R I S   R G B   I m a g e   O b j e c t                 *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2002 by Jeroen van der Zijp.   All Rights Reserved.             *
+* Copyright (C) 2002,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,15 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXRGBImage.cpp,v 1.4 2002/01/22 23:12:52 jeroen Exp $                    *
+* $Id: FXRGBImage.cpp,v 1.22 2005/01/16 16:06:07 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
+#include "FXMemoryStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
@@ -43,42 +46,49 @@
   Notes:
 */
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
+
+
+// Suggested file extension
+const FXchar FXRGBImage::fileExt[]="rgb";
+
 
 // Object implementation
 FXIMPLEMENT(FXRGBImage,FXImage,NULL,0)
 
 
 // Initialize
-FXRGBImage::FXRGBImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):
-  FXImage(a,NULL,opts&~IMAGE_ALPHA,w,h){
+FXRGBImage::FXRGBImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):FXImage(a,NULL,opts,w,h){
   if(pix){
     FXMemoryStream ms;
-    FXColor clearcolor;
-    ms.open((FXuchar*)pix,FXStreamLoad);
-    fxloadRGB(ms,data,clearcolor,width,height);
-    options|=IMAGE_OWNED;
+    ms.open(FXStreamLoad,(FXuchar*)pix);
+    loadPixels(ms);
     ms.close();
     }
   }
 
 
 // Save pixel data only
-void FXRGBImage::savePixels(FXStream& store) const {
-  FXColor clearcolor=FXRGB(192,192,192);
-  FXASSERT(!(options&IMAGE_ALPHA));
-  fxsaveRGB(store,data,clearcolor,width,height);
+FXbool FXRGBImage::savePixels(FXStream& store) const {
+  if(fxsaveRGB(store,data,width,height)){
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
 // Load pixel data only
-void FXRGBImage::loadPixels(FXStream& store){
-  FXColor clearcolor;
-  if(options&IMAGE_OWNED){FXFREE(&data);}
-  fxloadRGB(store,data,clearcolor,width,height);
-  options&=~IMAGE_ALPHA;
-  options|=IMAGE_OWNED;
+FXbool FXRGBImage::loadPixels(FXStream& store){
+  FXColor *pixels; FXint w,h;
+  if(fxloadRGB(store,pixels,w,h)){
+    setData(pixels,IMAGE_OWNED,w,h);
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
@@ -86,5 +96,4 @@ void FXRGBImage::loadPixels(FXStream& store){
 FXRGBImage::~FXRGBImage(){
   }
 
-
-
+}

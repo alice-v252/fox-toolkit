@@ -3,7 +3,7 @@
 *                       R o o t   W i n d o w   O b j e c t                     *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXRootWindow.cpp,v 1.20 2002/01/18 22:43:03 jeroen Exp $                 *
+* $Id: FXRootWindow.cpp,v 1.32 2005/01/16 16:06:07 fox Exp $                    *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -34,11 +36,21 @@
 #include "FXVisual.h"
 #include "FXRootWindow.h"
 
+/*
+  Notes:
+
+  - Size of FXRootWindow is now size of the entire virtual display, which
+    is a tiled virtual area of primary and secondary display adapters.
+*/
+
 
 #define DISPLAY(app) ((Display*)((app)->display))
 
+using namespace FX;
+
 /*******************************************************************************/
 
+namespace FX {
 
 // Object implementation
 FXIMPLEMENT(FXRootWindow,FXComposite,NULL,0)
@@ -93,12 +105,23 @@ void FXRootWindow::create(){
     // Initialize visual
     visual->create();
 
+    // Get HWND of desktop window
     xid=GetDesktopWindow();
+
+    // Obtain size
     HDC hdc=::GetDC((HWND)xid);
     width=GetDeviceCaps(hdc,HORZRES);
     height=GetDeviceCaps(hdc,VERTRES);
     ::ReleaseDC((HWND)xid,hdc);
 
+    // The code below returns the size of the entire virtual
+    // screen area instead of just that of the primary display;
+    // thanks to "Steve Granja" <Steven.Granja@abaqus.com>.
+    // [Apparently does not work on Win95 and WinNT...]
+    //xpos=GetSystemMetrics(SM_XVIRTUALSCREEN);
+    //ypos=GetSystemMetrics(SM_YVIRTUALSCREEN);
+    //width=GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    //height=GetSystemMetrics(SM_CYVIRTUALSCREEN);
 #endif
 
     // Normally create children
@@ -186,3 +209,5 @@ void FXRootWindow::killFocus(){ }
 FXRootWindow::~FXRootWindow(){
   xid=0;
   }
+
+}

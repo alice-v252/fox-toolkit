@@ -3,7 +3,7 @@
 *                       M e n u    B u t t o n    O b j e c t                   *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMenuButton.cpp,v 1.25.4.1 2002/07/08 15:16:58 fox Exp $                 *
+* $Id: FXMenuButton.cpp,v 1.45 2005/01/16 16:06:07 fox Exp $                    *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -38,6 +40,8 @@
 #include "FXIcon.h"
 #include "FXMenuButton.h"
 #include "FXMenuPane.h"
+
+#include "FXMenuBar.h"
 
 /*
   Notes:
@@ -68,6 +72,7 @@
   - You can specify horizontal or vertical offset to position the pane away
     from the button a bit.
   - Should it grab first before doing the POST?
+  - GUI update disabled while menu is popped up.
 */
 
 #define MENUBUTTONARROW_WIDTH   11
@@ -77,8 +82,11 @@
 #define POPUP_MASK              (MENUBUTTON_UP|MENUBUTTON_LEFT)
 #define ATTACH_MASK             (MENUBUTTON_ATTACH_RIGHT|MENUBUTTON_ATTACH_CENTER)
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXMenuButton) FXMenuButtonMap[]={
@@ -107,7 +115,7 @@ FXIMPLEMENT(FXMenuButton,FXLabel,FXMenuButtonMap,ARRAYNUMBER(FXMenuButtonMap))
 
 // Deserialization
 FXMenuButton::FXMenuButton(){
-  pane=(FXPopup*)-1;
+  pane=(FXPopup*)-1L;
   offsetx=0;
   offsety=0;
   state=FALSE;
@@ -225,15 +233,13 @@ long FXMenuButton::onLeave(FXObject* sender,FXSelector sel,void* ptr){
 // Pressed left button
 long FXMenuButton::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
   flags&=~FLAG_TIP;
-  handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONPRESS),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
     if(state)
-      handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
+      handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
     else
-      handle(this,MKUINT(ID_POST,SEL_COMMAND),NULL);
-    flags|=FLAG_PRESSED;
-    flags&=~FLAG_UPDATE;
+      handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
     return 1;
     }
   return 0;
@@ -244,10 +250,8 @@ long FXMenuButton::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
 long FXMenuButton::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
   FXEvent* ev=(FXEvent*)ptr;
   if(isEnabled()){
-    flags|=FLAG_UPDATE;
-    flags&=~FLAG_PRESSED;
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONRELEASE),ptr)) return 1;
-    if(ev->moved){ handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL); }
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
+    if(ev->moved){ handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL); }
     return 1;
     }
   return 0;
@@ -276,9 +280,7 @@ long FXMenuButton::onMotion(FXObject*,FXSelector,void* ptr){
 // The widget lost the grab for some reason
 long FXMenuButton::onUngrabbed(FXObject* sender,FXSelector sel,void* ptr){
   FXLabel::onUngrabbed(sender,sel,ptr);
-  handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
-  flags&=~FLAG_PRESSED;
-  flags|=FLAG_UPDATE;
+  handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
   return 1;
   }
 
@@ -289,12 +291,12 @@ long FXMenuButton::onKeyPress(FXObject*,FXSelector sel,void* ptr){
   flags&=~FLAG_TIP;
   if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
   if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_KEYPRESS),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
     if(event->code==KEY_space || event->code==KEY_KP_Space){
       if(state)
-        handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
+        handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
       else
-        handle(this,MKUINT(ID_POST,SEL_COMMAND),NULL);
+        handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
       return 1;
       }
     }
@@ -307,7 +309,7 @@ long FXMenuButton::onKeyRelease(FXObject*,FXSelector sel,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
   if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_KEYRELEASE),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
     if(event->code==KEY_space || event->code==KEY_KP_Space){
       return 1;
       }
@@ -320,12 +322,12 @@ long FXMenuButton::onKeyRelease(FXObject*,FXSelector sel,void* ptr){
 long FXMenuButton::onHotKeyPress(FXObject*,FXSelector,void* ptr){
   FXTRACE((200,"%s::onHotKeyPress %p\n",getClassName(),this));
   flags&=~FLAG_TIP;
-  handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   if(isEnabled()){
     if(state)
-      handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
+      handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
     else
-      handle(this,MKUINT(ID_POST,SEL_COMMAND),NULL);
+      handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
     }
   return 1;
   }
@@ -369,7 +371,7 @@ long FXMenuButton::onCmdPost(FXObject*,FXSelector,void*){
         else if(options&MENUBUTTON_ATTACH_BOTTOM){
           y=y+height-h;
           }
-        x=x-offsetx-pane->getWidth();
+        x=x-offsetx-w;
         y=y+offsety;
         }
       else if(options&MENUBUTTON_UP){                           // Up
@@ -383,7 +385,7 @@ long FXMenuButton::onCmdPost(FXObject*,FXSelector,void*){
           x=x+width-w;
           }
         x=x+offsetx;
-        y=y-offsety-pane->getHeight();
+        y=y-offsety-h;
         }
       else{                                                     // Down
         if((options&MENUBUTTON_ATTACH_RIGHT)&&(options&MENUBUTTON_ATTACH_CENTER)){
@@ -401,6 +403,7 @@ long FXMenuButton::onCmdPost(FXObject*,FXSelector,void*){
       pane->popup(this,x,y,w,h);
       if(!grabbed()) grab();
       }
+    flags&=~FLAG_UPDATE;
     state=TRUE;
     update();
     }
@@ -415,6 +418,7 @@ long FXMenuButton::onCmdUnpost(FXObject*,FXSelector,void*){
       pane->popdown();
       if(grabbed()) ungrab();
       }
+    flags|=FLAG_UPDATE;
     state=FALSE;
     update();
     }
@@ -596,19 +600,23 @@ long FXMenuButton::onPaint(FXObject*,FXSelector,void* ptr){
 
   // Draw text
   if(!label.empty()){
-    dc.setTextFont(font);
+    dc.setFont(font);
     if(isEnabled()){
       dc.setForeground(textColor);
       drawLabel(dc,label,hotoff,tx,ty,tw,th);
-      if(hasFocus()){
-        dc.drawFocusRectangle(border+1,border+1,width-2*border-2,height-2*border-2);
-        }
       }
     else{
       dc.setForeground(hiliteColor);
       drawLabel(dc,label,hotoff,tx+1,ty+1,tw,th);
       dc.setForeground(shadowColor);
       drawLabel(dc,label,hotoff,tx,ty,tw,th);
+      }
+    }
+
+  // Draw focus
+  if(hasFocus()){
+    if(isEnabled()){
+      dc.drawFocusRectangle(border+1,border+1,width-2*border-2,height-2*border-2);
       }
     }
   return 1;
@@ -618,7 +626,7 @@ long FXMenuButton::onPaint(FXObject*,FXSelector,void* ptr){
 // Out of focus chain
 void FXMenuButton::killFocus(){
   FXLabel::killFocus();
-  handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
+  handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
   }
 
 
@@ -626,6 +634,16 @@ void FXMenuButton::killFocus(){
 FXbool FXMenuButton::contains(FXint parentx,FXint parenty) const {
   if(pane && pane->shown() && pane->contains(parentx,parenty)) return 1;
   return 0;
+  }
+
+
+
+// Change the popup menu
+void FXMenuButton::setMenu(FXPopup *pup){
+  if(pup!=pane){
+    pane=pup;
+    recalc();
+    }
   }
 
 
@@ -697,5 +715,7 @@ void FXMenuButton::load(FXStream& store){
 
 // Delete it
 FXMenuButton::~FXMenuButton(){
-  pane=(FXPopup*)-1;
+  pane=(FXPopup*)-1L;
   }
+
+}

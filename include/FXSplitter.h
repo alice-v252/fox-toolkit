@@ -3,7 +3,7 @@
 *                S p l i t t e r   W i n d o w   W i d g e t                    *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXSplitter.h,v 1.19 2002/01/18 22:42:54 jeroen Exp $                     *
+* $Id: FXSplitter.h,v 1.28 2005/01/16 16:06:06 fox Exp $                        *
 ********************************************************************************/
 #ifndef FXSPLITTER_H
 #define FXSPLITTER_H
@@ -28,6 +28,7 @@
 #include "FXComposite.h"
 #endif
 
+namespace FX {
 
 
 /// Splitter options
@@ -43,14 +44,15 @@ enum {
 
 /**
 * Splitter window is used to interactively repartition
-* two or more subpanes.
-* Space may be subdivided horizontally or vertically.
+* two or more subpanels.
+* Space may be subdivided horizontally (SPLITTER_HORIZONTAL, which
+* the default) or vertically (SPLITTER_VERTICAL option).
 * When the splitter is itself resized, the right-most (bottom-most)
 * child window will be resized unless the splitter window is reversed;
 * if the splitter is reversed, the left-most (top-most) child window
 * will be resized instead.
 * The splitter widget sends a SEL_CHANGED to its target
-* during the resizing of the panes; at the end of the resize interaction,
+* during the resizing of the panels; at the end of the resize interaction,
 * it sends a SEL_COMMAND to signify that the resize operation is complete.
 * Normally, children are resizable from 0 upwards; however, if the child
 * in a horizontally oriented splitter has LAYOUT_FILL_X in combination with
@@ -59,7 +61,6 @@ enum {
 * SPLITTER_REVERSED has been passed to the splitter).
 * In a vertically oriented splitter, children with LAYOUT_FILL_Y and
 * LAYOUT_FIX_HEIGHT behave analogously.
-* These options only affect interactive resizing.
 */
 class FXAPI FXSplitter : public FXComposite {
   FXDECLARE(FXSplitter)
@@ -70,7 +71,6 @@ private:
   FXint     barsize;        // Size of the splitter bar
 protected:
   FXSplitter();
-  virtual void layout();
   void adjustHLayout();
   void adjustVLayout();
   void moveHSplit(FXint amount);
@@ -106,6 +106,15 @@ public:
   /// Get default height
   virtual FXint getDefaultHeight();
 
+  /// Perform layout
+  virtual void layout();
+
+  /// Return size of the panel at index
+  FXint getSplit(FXint index) const;
+
+  /// Change the size of panel at the given index
+  void setSplit(FXint index,FXint size);
+
   /// Change splitter style
   void setSplitterStyle(FXuint style);
 
@@ -128,5 +137,6 @@ public:
   virtual ~FXSplitter();
   };
 
+}
 
 #endif

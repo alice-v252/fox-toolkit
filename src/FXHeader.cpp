@@ -3,7 +3,7 @@
 *                               H e a d e r   O b j e c t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,13 +19,16 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXHeader.cpp,v 1.31.4.3 2003/08/15 12:57:44 fox Exp $                     *
+* $Id: FXHeader.cpp,v 1.94 2005/02/06 17:20:00 fox Exp $                        *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
+#include "FXObjectList.h"
 #include "FXSize.h"
 #include "FXPoint.h"
 #include "FXRectangle.h"
@@ -46,18 +49,24 @@
   - Allow some header items to be stretchable.
   - Add minimum, maximum size constraints to items.
   - Should up/down arrows go sideways when vertically oriented?
-  - Perhaps maintain button state in item.
   - Perhaps perform drawing of border in item also.
+  - Like for FXScrollArea, pos is always <=0 when scrolled.
+  - Maybe handy feature to initialize size to default item width
+    if initial size = 0.
+  - Maybe allow attach from right instead of only from left; perhaps
+    also attach both (or none).
 */
 
 
-#define FUDGE         8
-#define ARROW_SPACING 8
+#define FUDGE         4
 #define ICON_SPACING  4
 #define HEADER_MASK   (HEADER_BUTTON|HEADER_TRACKING|HEADER_VERTICAL)
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
 
 // Object implementation
 FXIMPLEMENT(FXHeaderItem,FXObject,NULL,0)
@@ -65,85 +74,126 @@ FXIMPLEMENT(FXHeaderItem,FXObject,NULL,0)
 
 // Draw item
 void FXHeaderItem::draw(const FXHeader* header,FXDC& dc,FXint x,FXint y,FXint w,FXint h){
-  FXFont *font=header->getFont();
+  register FXint tx,ty,tw,th,ix,iy,iw,ih,s,ml,mr,mt,mb,beg,end,t,xx,yy,bb,aa,ax,ay;
+  register FXFont *font=header->getFont();
 
-  // Clip to inside of header control
+  // Get border width and padding
+  bb=header->getBorderWidth();
+  ml=header->getPadLeft()+bb;
+  mr=header->getPadRight()+bb;
+  mt=header->getPadTop()+bb;
+  mb=header->getPadBottom()+bb;
+
+  // Shrink by margins
+  x+=ml; w-=ml+mr;
+  y+=mt; h-=mt+mb;
+
+  // Initial clip rectangle
   dc.setClipRectangle(x,y,w,h);
 
-  // Account for borders
-  w=w-(header->getPadLeft()+header->getPadRight()+(header->getBorderWidth()<<1));
-  h=h-(header->getPadTop()+header->getPadBottom()+(header->getBorderWidth()<<1));
-  x+=header->getBorderWidth()+header->getPadLeft();
-  y+=header->getBorderWidth()+header->getPadTop();
+  // Text width and height
+  tw=th=iw=ih=beg=s=0;
+  do{
+    end=beg;
+    while(end<label.length() && label[end]!='\n') end++;
+    if((t=font->getTextWidth(&label[beg],end-beg))>tw) tw=t;
+    th+=font->getFontHeight();
+    beg=end+1;
+    }
+  while(end<label.length());
 
-  // Draw icon
+  // Icon size
   if(icon){
-    if(icon->getWidth()<=w){
-      dc.drawIcon(icon,x,y+(h-icon->getHeight())/2);
-      x+=icon->getWidth();
-      w-=icon->getWidth();
-      }
+    iw=icon->getWidth();
+    ih=icon->getHeight();
     }
 
-  // Draw text
-  if(!label.empty()){
-    FXint dw=font->getTextWidth("...",3);
-    FXint num=label.length();
-    FXint tw=font->getTextWidth(label.text(),num);
-    FXint th=font->getFontHeight();
-    FXint ty=y+(h-th)/2+font->getFontAscent();
-    dc.setTextFont(font);
-    if(icon){ x+=ICON_SPACING; w-=ICON_SPACING; }
-    if(tw<=w){
-      dc.setForeground(header->getTextColor());
-      dc.drawText(x,ty,label.text(),num);
-      x+=tw;
-      w-=tw;
-      }
-    else{
-      while(num>0 && (tw=font->getTextWidth(label.text(),num))>(w-dw)) num--;
-      if(num>0){
-        dc.setForeground(header->getTextColor());
-        dc.drawText(x,ty,label.text(),num);
-        dc.drawText(x+tw,ty,"...",3);
-        x+=tw+dw;
-        w-=tw+dw;
-        }
-      else{
-        tw=font->getTextWidth(label.text(),1);
-        if(tw<=w){
-          dc.setForeground(header->getTextColor());
-          dc.drawText(x,ty,label.text(),1);
-          x+=tw;
-          w-=tw;
-          }
-        }
-      }
-    }
+  // Icon-text spacing
+  if(iw && tw) s=ICON_SPACING;
 
   // Draw arrows
-  if(arrow!=MAYBE){
-    FXint aa=(font->getFontHeight()-3)|1;
-    if(icon || !label.empty()){ x+=ARROW_SPACING; w-=ARROW_SPACING; }
-    if(w>aa){
-      if(arrow==TRUE){
-        y=y+(h-aa)/2;
-        dc.setForeground(header->getHiliteColor());
-        dc.drawLine(x+aa/2,y,x+aa-1,y+aa);
-        dc.drawLine(x,y+aa,x+aa,y+aa);
-        dc.setForeground(header->getShadowColor());
-        dc.drawLine(x+aa/2,y,x,y+aa);
-        }
-      else{
-        y=y+(h-aa)/2;
-        dc.setForeground(header->getHiliteColor());
-        dc.drawLine(x+aa/2,y+aa,x+aa-1,y);
-        dc.setForeground(header->getShadowColor());
-        dc.drawLine(x+aa/2,y+aa,x,y);
-        dc.drawLine(x,y,x+aa,y);
-        }
+  if(state&(ARROW_UP|ARROW_DOWN)){
+    aa=(font->getFontHeight()-5)|1;
+    ay=y+(h-aa)/2;
+    ax=x+w-aa-2;
+    if(state&ARROW_UP){
+      dc.setForeground(header->getHiliteColor());
+      dc.drawLine(ax+aa/2,ay,ax+aa-1,ay+aa);
+      dc.drawLine(ax,ay+aa,ax+aa,ay+aa);
+      dc.setForeground(header->getShadowColor());
+      dc.drawLine(ax+aa/2,ay,ax,ay+aa);
       }
+    else{
+      dc.setForeground(header->getHiliteColor());
+      dc.drawLine(ax+aa/2,ay+aa,ax+aa-1,ay);
+      dc.setForeground(header->getShadowColor());
+      dc.drawLine(ax+aa/2,ay+aa,ax,ay);
+      dc.drawLine(ax,ay,ax+aa,ay);
+      }
+    w-=aa+4;
+    dc.setClipRectangle(x,y,w,h);
     }
+
+  // Fix x coordinate
+  if(state&LEFT){
+    if(state&BEFORE){ ix=x; tx=ix+iw+s; }
+    else if(state&AFTER){ tx=x; ix=tx+tw+s; }
+    else{ ix=x; tx=x; }
+    }
+  else if(state&RIGHT){
+    if(state&BEFORE){ tx=x+w-tw; ix=tx-iw-s; }
+    else if(state&AFTER){ ix=x+w-iw; tx=ix-tw-s; }
+    else{ ix=x+w-iw; tx=x+w-tw; }
+    }
+  else{
+    if(state&BEFORE){ ix=x+(w-tw-iw-s)/2; tx=ix+iw+s; }
+    else if(state&AFTER){ tx=x+(w-tw-iw-s)/2; ix=tx+tw+s; }
+    else{ ix=x+(w-iw)/2; tx=x+(w-tw)/2; }
+    }
+
+  // Fix y coordinate
+  if(state&TOP){
+    if(state&ABOVE){ iy=y; ty=iy+ih; }
+    else if(state&BELOW){ ty=y; iy=ty+th; }
+    else{ iy=y; ty=y; }
+    }
+  else if(state&BOTTOM){
+    if(state&ABOVE){ ty=y+h-th; iy=ty-ih; }
+    else if(state&BELOW){ iy=y+h-ih; ty=iy-th; }
+    else{ iy=y+h-ih; ty=y+h-th; }
+    }
+  else{
+    if(state&ABOVE){ iy=y+(h-th-ih)/2; ty=iy+ih; }
+    else if(state&BELOW){ ty=y+(h-th-ih)/2; iy=ty+th; }
+    else{ iy=y+(h-ih)/2; ty=y+(h-th)/2; }
+    }
+
+  // Offset a bit when pressed
+  if(state&PRESSED){ tx++; ty++; ix++; iy++; }
+
+  // Paint icon
+  if(icon){
+    dc.drawIcon(icon,ix,iy);
+    }
+
+  // Text color
+  dc.setForeground(header->getTextColor());
+
+  // Draw text
+  dc.setFont(font);
+  yy=ty+font->getFontAscent();
+  beg=0;
+  do{
+    end=beg;
+    while(end<label.length() && label[end]!='\n') end++;
+    if(state&LEFT) xx=tx;
+    else if(state&RIGHT) xx=tx+tw-font->getTextWidth(&label[beg],end-beg);
+    else xx=tx+(tw-font->getTextWidth(&label[beg],end-beg))/2;
+    dc.drawText(xx,yy,&label[beg],end-beg);
+    yy+=font->getFontHeight();
+    beg=end+1;
+    }
+  while(end<label.length());
 
   // Restore original clip path
   dc.clearClipRectangle();
@@ -162,29 +212,92 @@ void FXHeaderItem::destroy(){ /*if(icon) icon->destroy();*/ }
 void FXHeaderItem::detach(){ if(icon) icon->detach(); }
 
 
+// Change sort direction
+void FXHeaderItem::setArrowDir(FXbool dir){
+  state&=~(ARROW_UP|ARROW_DOWN);
+  if(dir==TRUE) state|=ARROW_UP; else if(dir==FALSE) state|=ARROW_DOWN;
+  }
+
+
+// Change sort direction
+FXbool FXHeaderItem::getArrowDir() const {
+  return (state&ARROW_UP) ? TRUE : (state&ARROW_DOWN) ? FALSE : MAYBE;
+  }
+
+
+// Change justify mode
+void FXHeaderItem::setJustify(FXuint justify){
+  state=(state&~(RIGHT|LEFT|TOP|BOTTOM)) | (justify&(RIGHT|LEFT|TOP|BOTTOM));
+  }
+
+// Change icon positioning
+void FXHeaderItem::setIconPosition(FXuint mode){
+  state=(state&~(BEFORE|AFTER|ABOVE|BELOW)) | (mode&(BEFORE|AFTER|ABOVE|BELOW));
+  }
+
+
+// Set button state
+void FXHeaderItem::setPressed(FXbool pressed){
+  if(pressed) state|=PRESSED; else state&=~PRESSED;
+  }
+
+
 // Get width of item
 FXint FXHeaderItem::getWidth(const FXHeader* header) const {
-  register FXint w;
-  if(header->getHeaderStyle()&HEADER_VERTICAL){
-    w=0;
-    if(icon) w=icon->getWidth();
-    if(!label.empty()){ w+=header->getFont()->getTextWidth(label.text(),label.length()); if(icon) w+=ICON_SPACING; }
-    return w+header->getPadLeft()+header->getPadRight()+(header->getBorderWidth()<<1);
+  register FXint ml=header->getPadLeft()+header->getBorderWidth();
+  register FXint mr=header->getPadRight()+header->getBorderWidth();
+  register FXFont *font=header->getFont();
+  register FXint beg,end,tw,iw,s,t,w;
+  tw=iw=beg=s=0;
+  if(icon) iw=icon->getWidth();
+  do{
+    end=beg;
+    while(end<label.length() && label[end]!='\n') end++;
+    if((t=font->getTextWidth(&label[beg],end-beg))>tw) tw=t;
+    beg=end+1;
     }
-  return size;
+  while(end<label.length());
+  if(iw && tw) s=4;
+  if(state&(BEFORE|AFTER))
+    w=iw+tw+s;
+  else
+    w=FXMAX(iw,tw);
+  return ml+mr+w;
   }
 
 
 // Get height of item
 FXint FXHeaderItem::getHeight(const FXHeader* header) const {
-  register FXint th,ih;
-  if(!(header->getHeaderStyle()&HEADER_VERTICAL)){
-    th=ih=0;
-    if(!label.empty()) th=header->getFont()->getFontHeight();
-    if(icon) ih=icon->getHeight();
-    return FXMAX(th,ih)+header->getPadTop()+header->getPadBottom()+(header->getBorderWidth()<<1);
+  register FXint mt=header->getPadTop()+header->getBorderWidth();
+  register FXint mb=header->getPadBottom()+header->getBorderWidth();
+  register FXFont *font=header->getFont();
+  register FXint beg,end,th,ih,h;
+  th=ih=beg=0;
+  if(icon) ih=icon->getHeight();
+  do{
+    end=beg;
+    while(end<label.length() && label[end]!='\n') end++;
+    th+=font->getFontHeight();
+    beg=end+1;
     }
-  return size;
+  while(end<label.length());
+  if(state&(ABOVE|BELOW))
+    h=ih+th;
+  else
+    h=FXMAX(ih,th);
+  return h+mt+mb;
+  }
+
+
+// Change item's text label
+void FXHeaderItem::setText(const FXString& txt){ 
+  label=txt; 
+  }
+
+
+// Change item's icon
+void FXHeaderItem::setIcon(FXIcon* icn){ 
+  icon=icn; 
   }
 
 
@@ -194,7 +307,8 @@ void FXHeaderItem::save(FXStream& store) const {
   store << label;
   store << icon;
   store << size;
-  store << arrow;
+  store << pos;
+  store << state;
   }
 
 
@@ -204,7 +318,8 @@ void FXHeaderItem::load(FXStream& store){
   store >> label;
   store >> icon;
   store >> size;
-  store >> arrow;
+  store >> pos;
+  store >> state;
   }
 
 
@@ -218,8 +333,8 @@ FXDEFMAP(FXHeader) FXHeaderMap[]={
   FXMAPFUNC(SEL_LEFTBUTTONRELEASE,0,FXHeader::onLeftBtnRelease),
   FXMAPFUNC(SEL_UNGRABBED,0,FXHeader::onUngrabbed),
   FXMAPFUNC(SEL_TIMEOUT,FXHeader::ID_TIPTIMER,FXHeader::onTipTimer),
-  FXMAPFUNC(SEL_UPDATE,FXWindow::ID_QUERY_TIP,FXHeader::onQueryTip),
-  FXMAPFUNC(SEL_UPDATE,FXWindow::ID_QUERY_HELP,FXHeader::onQueryHelp),
+  FXMAPFUNC(SEL_QUERY_TIP,0,FXHeader::onQueryTip),
+  FXMAPFUNC(SEL_QUERY_HELP,0,FXHeader::onQueryHelp),
   };
 
 
@@ -230,16 +345,13 @@ FXIMPLEMENT(FXHeader,FXFrame,FXHeaderMap,ARRAYNUMBER(FXHeaderMap))
 // Make a Header
 FXHeader::FXHeader(){
   flags|=FLAG_ENABLED|FLAG_SHOWN;
-  items=NULL;
-  nitems=0;
   textColor=0;
-  state=FALSE;
-  font=(FXFont*)-1;
-  timer=NULL;
+  font=NULL;
+  pos=0;
   active=-1;
   activepos=0;
   activesize=0;
-  off=0;
+  offset=0;
   }
 
 
@@ -249,16 +361,13 @@ FXHeader::FXHeader(FXComposite* p,FXObject* tgt,FXSelector sel,FXuint opts,FXint
   flags|=FLAG_ENABLED|FLAG_SHOWN;
   target=tgt;
   message=sel;
-  items=NULL;
-  nitems=0;
   textColor=getApp()->getForeColor();
   font=getApp()->getNormalFont();
-  timer=NULL;
-  state=FALSE;
+  pos=0;
   active=-1;
   activepos=0;
   activesize=0;
-  off=0;
+  offset=0;
   }
 
 
@@ -266,8 +375,8 @@ FXHeader::FXHeader(FXComposite* p,FXObject* tgt,FXSelector sel,FXuint opts,FXint
 void FXHeader::create(){
   register FXint i;
   FXFrame::create();
+  for(i=0; i<items.no(); i++){items[i]->create();}
   font->create();
-  for(i=0; i<nitems; i++){if(items[i]->icon){items[i]->icon->create();}}
   }
 
 
@@ -275,19 +384,23 @@ void FXHeader::create(){
 void FXHeader::detach(){
   register FXint i;
   FXFrame::detach();
+  for(i=0; i<items.no(); i++){items[i]->detach();}
   font->detach();
-  for(i=0; i<nitems; i++){if(items[i]->icon){items[i]->icon->detach();}}
   }
 
 
 // Get default width
 FXint FXHeader::getDefaultWidth(){
-  register FXint w,i,t;
+  register FXint i,t,w=0;
   if(options&HEADER_VERTICAL){
-    for(i=0,w=0; i<nitems; i++){if((t=items[i]->getWidth(this))>w) w=t;}
+    for(i=0; i<items.no(); i++){
+      if((t=items[i]->getWidth(this))>w) w=t;
+      }
     }
   else{
-    for(i=0,w=0; i<nitems; i++){w+=items[i]->getWidth(this);}
+    for(i=0; i<items.no(); i++){
+      w+=items[i]->getSize();
+      }
     }
   return w;
   }
@@ -295,14 +408,25 @@ FXint FXHeader::getDefaultWidth(){
 
 // Get default height
 FXint FXHeader::getDefaultHeight(){
-  register FXint h,i,t;
+  register FXint i,t,h=0;
   if(options&HEADER_VERTICAL){
-    for(i=0,h=0; i<nitems; i++){h+=items[i]->getHeight(this);}
+    for(i=0; i<items.no(); i++){
+      h+=items[i]->getSize();
+      }
     }
   else{
-    for(i=0,h=0; i<nitems; i++){if((t=items[i]->getHeight(this))>h) h=t;}
+    for(i=0; i<items.no(); i++){
+      if((t=items[i]->getHeight(this))>h) h=t;
+      }
     }
   return h;
+  }
+
+
+
+// Return total size
+FXint FXHeader::getTotalSize() const {
+  return items.no() ? items[items.no()-1]->getPos()+items[items.no()-1]->getSize()-items[0]->getPos() : 0;
   }
 
 
@@ -313,26 +437,27 @@ FXHeaderItem *FXHeader::createItem(const FXString& text,FXIcon* icon,FXint size,
 
 
 // Retrieve item
-FXHeaderItem *FXHeader::retrieveItem(FXint index) const {
-  if(index<0 || nitems<=index){ fxerror("%s::retrieveItem: index out of range.\n",getClassName()); }
+FXHeaderItem *FXHeader::getItem(FXint index) const {
+  if(index<0 || items.no()<=index){ fxerror("%s::getItem: index out of range.\n",getClassName()); }
   return items[index];
   }
 
 
 // Replace item with another
-FXint FXHeader::replaceItem(FXint index,FXHeaderItem* item,FXbool notify){
+FXint FXHeader::setItem(FXint index,FXHeaderItem* item,FXbool notify){
 
   // Must have item
-  if(!item){ fxerror("%s::replaceItem: item is NULL.\n",getClassName()); }
+  if(!item){ fxerror("%s::setItem: item is NULL.\n",getClassName()); }
 
   // Must be in range
-  if(index<0 || nitems<=index){ fxerror("%s::replaceItem: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<=index){ fxerror("%s::setItem: index out of range.\n",getClassName()); }
 
   // Notify item will be replaced
-  if(notify && target){target->handle(this,MKUINT(message,SEL_REPLACED),(void*)(FXival)index);}
+  if(notify && target){target->tryHandle(this,FXSEL(SEL_REPLACED,message),(void*)(FXival)index);}
 
   // Copy the size over
   item->setSize(items[index]->getSize());
+  item->setPos(items[index]->getPos());
 
   // Delete old
   delete items[index];
@@ -347,28 +472,32 @@ FXint FXHeader::replaceItem(FXint index,FXHeaderItem* item,FXbool notify){
 
 
 // Replace item with another
-FXint FXHeader::replaceItem(FXint index,const FXString& text,FXIcon *icon,FXint size,void* ptr,FXbool notify){
-  return replaceItem(index,createItem(text,icon,FXMAX(size,0),ptr),notify);
+FXint FXHeader::setItem(FXint index,const FXString& text,FXIcon *icon,FXint size,void* ptr,FXbool notify){
+  return setItem(index,createItem(text,icon,FXMAX(size,0),ptr),notify);
   }
 
 
 // Insert item
 FXint FXHeader::insertItem(FXint index,FXHeaderItem* item,FXbool notify){
+  register FXint i,d;
 
   // Must have item
   if(!item){ fxerror("%s::insertItem: item is NULL.\n",getClassName()); }
 
   // Must be in range
-  if(index<0 || nitems<index){ fxerror("%s::insertItem: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<index){ fxerror("%s::insertItem: index out of range.\n",getClassName()); }
+
+  // New item position
+  item->setPos((0<index)?items[index-1]->getPos()+items[index-1]->getSize():0);
+
+  // Move over remaining items
+  for(i=index,d=item->getSize(); i<items.no(); i++) items[i]->setPos(items[i]->getPos()+d);
 
   // Add item to list
-  FXRESIZE(&items,FXHeaderItem*,nitems+1);
-  memmove(&items[index+1],&items[index],sizeof(FXHeaderItem*)*(nitems-index));
-  items[index]=item;
-  nitems++;
+  items.insert(index,item);
 
   // Notify item has been inserted
-  if(notify && target){target->handle(this,MKUINT(message,SEL_INSERTED),(void*)(FXival)index);}
+  if(notify && target){target->tryHandle(this,FXSEL(SEL_INSERTED,message),(void*)(FXival)index);}
 
   // Redo layout
   recalc();
@@ -385,13 +514,13 @@ FXint FXHeader::insertItem(FXint index,const FXString& text,FXIcon *icon,FXint s
 
 // Append item
 FXint FXHeader::appendItem(FXHeaderItem* item,FXbool notify){
-  return insertItem(nitems,item,notify);
+  return insertItem(items.no(),item,notify);
   }
 
 
 // Append item
 FXint FXHeader::appendItem(const FXString& text,FXIcon *icon,FXint size,void* ptr,FXbool notify){
-  return insertItem(nitems,createItem(text,icon,FXMAX(size,0),ptr),notify);
+  return insertItem(items.no(),createItem(text,icon,FXMAX(size,0),ptr),notify);
   }
 
 
@@ -406,19 +535,48 @@ FXint FXHeader::prependItem(const FXString& text,FXIcon *icon,FXint size,void* p
   }
 
 
+// Fill list by appending items from array of strings
+FXint FXHeader::fillItems(const FXchar** strings,FXIcon *icon,FXint size,void* ptr,FXbool notify){
+  register FXint n=0;
+  if(strings){
+    while(strings[n]){
+      appendItem(strings[n++],icon,size,ptr,notify);
+      }
+    }
+  return n;
+  }
+
+
+// Fill list by appending items from newline separated strings
+FXint FXHeader::fillItems(const FXString& strings,FXIcon *icon,FXint size,void* ptr,FXbool notify){
+  register FXint n=0;
+  FXString text;
+  while(!(text=strings.section('\n',n)).empty()){
+    appendItem(text,icon,size,ptr,notify);
+    n++;
+    }
+  return n;
+  }
+
+
 // Remove node from list
 void FXHeader::removeItem(FXint index,FXbool notify){
+  register FXint i,d;
 
   // Must be in range
-  if(index<0 || nitems<=index){ fxerror("%s::removeItem: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<=index){ fxerror("%s::removeItem: index out of range.\n",getClassName()); }
 
   // Notify item will be deleted
-  if(notify && target){target->handle(this,MKUINT(message,SEL_DELETED),(void*)(FXival)index);}
+  if(notify && target){target->tryHandle(this,FXSEL(SEL_DELETED,message),(void*)(FXival)index);}
+
+  // Adjust remaining columns
+  for(i=index+1,d=items[index]->getSize(); i<items.no(); i++) items[i]->setPos(items[i]->getPos()-d);
+
+  // Delete item
+  delete items[index];
 
   // Remove item from list
-  nitems--;
-  delete items[index];
-  memmove(&items[index],&items[index+1],sizeof(FXHeaderItem*)*(nitems-index));
+  items.remove(index);
 
   // Redo layout
   recalc();
@@ -429,81 +587,62 @@ void FXHeader::removeItem(FXint index,FXbool notify){
 void FXHeader::clearItems(FXbool notify){
 
   // Delete items
-  for(FXint index=nitems-1; 0<=index; index--){
-    if(notify && target){target->handle(this,MKUINT(message,SEL_DELETED),(void*)(FXival)index);}
+  for(FXint index=items.no()-1; 0<=index; index--){
+    if(notify && target){target->tryHandle(this,FXSEL(SEL_DELETED,message),(void*)(FXival)index);}
     delete items[index];
     }
 
   // Free array
-  FXFREE(&items);
-  nitems=0;
+  items.clear();
 
   // Redo layout
   recalc();
   }
 
 
-// Get item at offset
-FXint FXHeader::getItemAt(FXint offset) const {
-  register FXint x,y,i,w,h;
-  if(options&HEADER_VERTICAL){
-    for(i=0,y=0; i<nitems; i++){
-      h=items[i]->getHeight(this);
-      if(y<=offset && offset<y+h) return i;
-      y+=h;
-      }
-    }
-  else{
-    for(i=0,x=0; i<nitems; i++){
-      w=items[i]->getWidth(this);
-      if(x<=offset && offset<x+w) return i;
-      x+=w;
-      }
-    }
-  return -1;
-  }
-
-
 // Change item's text
 void FXHeader::setItemText(FXint index,const FXString& text){
-  if(index<0 || nitems<=index){ fxerror("%s::setItemText: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<=index){ fxerror("%s::setItemText: index out of range.\n",getClassName()); }
   if(items[index]->getText()!=text){
     items[index]->setText(text);
-    update();
+    recalc();
     }
   }
 
 
 // Get item's text
 FXString FXHeader::getItemText(FXint index) const {
-  if(index<0 || nitems<=index){ fxerror("%s::getItemText: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<=index){ fxerror("%s::getItemText: index out of range.\n",getClassName()); }
   return items[index]->getText();
   }
 
 
 // Change item's icon
 void FXHeader::setItemIcon(FXint index,FXIcon* icon){
-  if(index<0 || nitems<=index){ fxerror("%s::setItemIcon: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<=index){ fxerror("%s::setItemIcon: index out of range.\n",getClassName()); }
   if(items[index]->getIcon()!=icon){
     items[index]->setIcon(icon);
-    update();
+    recalc();
     }
   }
 
 
 // Get item's icon
 FXIcon* FXHeader::getItemIcon(FXint index) const {
-  if(index<0 || nitems<=index){ fxerror("%s::getItemIcon: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<=index){ fxerror("%s::getItemIcon: index out of range.\n",getClassName()); }
   return items[index]->getIcon();
   }
 
 
 // Change item's size
 void FXHeader::setItemSize(FXint index,FXint size){
-  if(index<0 || nitems<=index){ fxerror("%s::setItemSize: index out of range.\n",getClassName()); }
+  register FXint i,d;
+  if(index<0 || items.no()<=index){ fxerror("%s::setItemSize: index out of range.\n",getClassName()); }
   if(size<0) size=0;
-  if(items[index]->getSize()!=size){
+  d=size-items[index]->getSize();
+  if(d!=0){
     items[index]->setSize(size);
+    for(i=index+1; i<items.no(); i++) items[i]->setPos(items[i]->getPos()+d);
     recalc();
     }
   }
@@ -511,53 +650,145 @@ void FXHeader::setItemSize(FXint index,FXint size){
 
 // Get item's size
 FXint FXHeader::getItemSize(FXint index) const {
-  if(index<0 || nitems<=index){ fxerror("%s::getItemSize: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<=index){ fxerror("%s::getItemSize: index out of range.\n",getClassName()); }
   return items[index]->getSize();
   }
 
 
 // Get item's offset
 FXint FXHeader::getItemOffset(FXint index) const {
-  register FXint off,i;
-  if(index<0 || nitems<=index){ fxerror("%s::getItemOffset: index out of range.\n",getClassName()); }
-  if(options&HEADER_VERTICAL){
-    for(i=0,off=0; i<index; i++){off+=items[i]->getHeight(this);}
+  if(index<0 || items.no()<=index){ fxerror("%s::getItemOffset: index out of range.\n",getClassName()); }
+  return pos+items[index]->getPos();
+  }
+
+
+// Get index of item at offset
+FXint FXHeader::getItemAt(FXint coord) const {
+  register FXint h=items.no()-1,l=0,m;
+  if(l<=h){
+    coord=coord-pos;
+    if(coord<items[l]->getPos()) return -1;
+    if(coord>=items[h]->getPos()+items[h]->getSize()) return items.no();
+    do{
+      m=(h+l)>>1;
+      if(coord<items[m]->getPos()) h=m-1;
+      else if(coord>=items[m]->getPos()+items[m]->getSize()) l=m+1;
+      else break;
+      }
+    while(h>=l);
+    return m;
     }
-  else{
-    for(i=0,off=0; i<index; i++){off+=items[i]->getWidth(this);}
-    }
-  return off;
+  return -1;
   }
 
 
 // Set item data
 void FXHeader::setItemData(FXint index,void* ptr){
-  if(index<0 || nitems<=index){ fxerror("%s::setItemData: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<=index){ fxerror("%s::setItemData: index out of range.\n",getClassName()); }
   items[index]->setData(ptr);
   }
 
 
 // Get item data
 void* FXHeader::getItemData(FXint index) const {
-  if(index<0 || nitems<=index){ fxerror("%s::getItemData: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<=index){ fxerror("%s::getItemData: index out of range.\n",getClassName()); }
   return items[index]->getData();
   }
 
 
 // Change sort direction
 void FXHeader::setArrowDir(FXint index,FXbool dir){
-  if(index<0 || nitems<=index){ fxerror("%s::setArrowDir: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<=index){ fxerror("%s::setArrowDir: index out of range.\n",getClassName()); }
   if(items[index]->getArrowDir()!=dir){
     items[index]->setArrowDir(dir);
-    update();
+    updateItem(index);
     }
   }
 
 
 // Return sort direction
 FXbool FXHeader::getArrowDir(FXint index) const {
-  if(index<0 || nitems<=index){ fxerror("%s::getArrowDir: index out of range.\n",getClassName()); }
+  if(index<0 || items.no()<=index){ fxerror("%s::getArrowDir: index out of range.\n",getClassName()); }
   return items[index]->getArrowDir();
+  }
+
+
+// Change item justification
+void FXHeader::setItemJustify(FXint index,FXuint justify){
+  if(index<0 || items.no()<=index){ fxerror("%s::setItemJustify: index out of range.\n",getClassName()); }
+  if(items[index]->getJustify()!=justify){
+    items[index]->setJustify(justify);
+    updateItem(index);
+    }
+  }
+
+
+// Return item justification
+FXuint FXHeader::getItemJustify(FXint index) const {
+  if(index<0 || items.no()<=index){ fxerror("%s::getItemJustify: index out of range.\n",getClassName()); }
+  return items[index]->getJustify();
+  }
+
+
+// Change relative position of icon and text of item
+void FXHeader::setItemIconPosition(FXint index,FXuint mode){
+  if(index<0 || items.no()<=index){ fxerror("%s::setItemIconPosition: index out of range.\n",getClassName()); }
+  if(items[index]->getIconPosition()!=mode){
+    items[index]->setIconPosition(mode);
+    recalc();
+    }
+  }
+
+
+// Return relative icon and text position
+FXuint FXHeader::getItemIconPosition(FXint index) const {
+  if(index<0 || items.no()<=index){ fxerror("%s::getItemIconPosition: index out of range.\n",getClassName()); }
+  return items[index]->getIconPosition();
+  }
+
+
+// Changed button item's pressed state
+void FXHeader::setItemPressed(FXint index,FXbool pressed){
+  if(index<0 || items.no()<=index){ fxerror("%s::setItemPressed: index out of range.\n",getClassName()); }
+  if(pressed!=items[index]->isPressed()){
+    items[index]->setPressed(pressed);
+    updateItem(index);
+    }
+  }
+
+
+// Return TRUE if button item is pressed in
+FXbool FXHeader::isItemPressed(FXint index) const {
+  if(index<0 || items.no()<=index){ fxerror("%s::isItemPressed: index out of range.\n",getClassName()); }
+  return items[index]->isPressed();
+  }
+
+
+// Scroll to make given item visible
+void FXHeader::makeItemVisible(FXint index){
+  register FXint newpos,ioffset,isize,space;
+  if(xid){
+    newpos=pos;
+    if(0<=index && index<items.no()){
+      space=(options&HEADER_VERTICAL)?height:width;
+      ioffset=items[index]->getPos();
+      isize=items[index]->getSize();
+      newpos=pos;
+      if(newpos+ioffset+isize>=space) newpos=space-ioffset-isize;
+      if(newpos+ioffset<=0) newpos=-ioffset;
+      }
+    setPosition(newpos);
+    }
+  }
+
+
+// Repaint cell at index
+void FXHeader::updateItem(FXint index) const {
+  if(index<0 || items.no()<=index){ fxerror("%s::updateItem: index out of range.\n",getClassName()); }
+  if(options&HEADER_VERTICAL)
+    update(0,pos+items[index]->getPos(),width,items[index]->getSize());
+  else
+    update(pos+items[index]->getPos(),0,items[index]->getSize(),height);
   }
 
 
@@ -576,49 +807,111 @@ void FXHeader::layout(){
 long FXHeader::onPaint(FXObject*,FXSelector,void* ptr){
   FXEvent *ev=(FXEvent*)ptr;
   FXDCWindow dc(this,ev);
-  FXint x,y,w,h,i;
+  register FXint x,y,w,h,i,ilo,ihi;
+
+  // Paint background
   dc.setForeground(backColor);
   dc.fillRectangle(ev->rect.x,ev->rect.y,ev->rect.w,ev->rect.h);
-  if(options&HEADER_VERTICAL){
-    for(i=0,y=0; i<nitems; i++){
-      h=items[i]->getHeight(this);
-      if(ev->rect.y<y+h && y<ev->rect.y+ev->rect.h){
+
+  // Got items
+  if(items.no()){
+    if(options&HEADER_VERTICAL){
+
+      // Determine affected items
+      ilo=getItemAt(ev->rect.y);
+      ihi=getItemAt(ev->rect.y+ev->rect.h);
+
+      // Fragment below first item
+      if(ilo<0){
+        y=pos+items[0]->getPos();
+        if(0<y){
+          if(options&FRAME_THICK)
+            drawDoubleRaisedRectangle(dc,0,0,width,y);
+          else
+            drawRaisedRectangle(dc,0,0,width,y);
+          }
+        ilo=0;
+        }
+
+      // Fragment above last item
+      if(ihi>=items.no()){
+        y=pos+items[items.no()-1]->getPos()+items[items.no()-1]->getSize();
+        if(y<height){
+          if(options&FRAME_THICK)
+            drawDoubleRaisedRectangle(dc,0,y,width,height-y);
+          else
+            drawRaisedRectangle(dc,0,y,width,height-y);
+          }
+        ihi=items.no()-1;
+        }
+
+      // Draw only affected items
+      for(i=ilo; i<=ihi; i++){
+        y=pos+items[i]->getPos();
+        h=items[i]->getSize();
+        if(items[i]->isPressed()){
+          if(options&FRAME_THICK)
+            drawDoubleSunkenRectangle(dc,0,y,width,h);
+          else
+            drawSunkenRectangle(dc,0,y,width,h);
+          }
+        else{
+          if(options&FRAME_THICK)
+            drawDoubleRaisedRectangle(dc,0,y,width,h);
+          else
+            drawRaisedRectangle(dc,0,y,width,h);
+          }
         items[i]->draw(this,dc,0,y,width,h);
-        if(i==active && state){
-          if(options&FRAME_THICK) drawDoubleSunkenRectangle(dc,0,y,width,h);
-          else drawSunkenRectangle(dc,0,y,width,h);
+        }
+      }
+    else{
+
+      // Determine affected items
+      ilo=getItemAt(ev->rect.x);
+      ihi=getItemAt(ev->rect.x+ev->rect.w);
+
+      // Fragment below first item
+      if(ilo<0){
+        x=pos+items[0]->getPos();
+        if(0<x){
+          if(options&FRAME_THICK)
+            drawDoubleRaisedRectangle(dc,0,0,x,height);
+          else
+            drawRaisedRectangle(dc,0,0,x,height);
+          }
+        ilo=0;
+        }
+
+      // Fragment above last item
+      if(ihi>=items.no()){
+        x=pos+items[items.no()-1]->getPos()+items[items.no()-1]->getSize();
+        if(x<width){
+          if(options&FRAME_THICK)
+            drawDoubleRaisedRectangle(dc,x,0,width-x,height);
+          else
+            drawRaisedRectangle(dc,x,0,width-x,height);
+          }
+        ihi=items.no()-1;
+        }
+
+      // Draw only the affected items
+      for(i=ilo; i<=ihi; i++){
+        x=pos+items[i]->getPos();
+        w=items[i]->getSize();
+        if(items[i]->isPressed()){
+          if(options&FRAME_THICK)
+            drawDoubleSunkenRectangle(dc,x,0,w,height);
+          else
+            drawSunkenRectangle(dc,x,0,w,height);
           }
         else{
-          if(options&FRAME_THICK) drawDoubleRaisedRectangle(dc,0,y,width,h);
-          else drawRaisedRectangle(dc,0,y,width,h);
+          if(options&FRAME_THICK)
+            drawDoubleRaisedRectangle(dc,x,0,w,height);
+          else
+            drawRaisedRectangle(dc,x,0,w,height);
           }
-        }
-      y+=h;
-      }
-    if(y<height){
-      if(options&FRAME_THICK) drawDoubleRaisedRectangle(dc,0,y,width,height-y);
-      else drawRaisedRectangle(dc,0,y,width,height-y);
-      }
-    }
-  else{
-    for(i=0,x=0; i<nitems; i++){
-      w=items[i]->getWidth(this);
-      if(ev->rect.x<x+w && x<ev->rect.x+ev->rect.w){
         items[i]->draw(this,dc,x,0,w,height);
-        if(i==active && state){
-          if(options&FRAME_THICK) drawDoubleSunkenRectangle(dc,x,0,w,height);
-          else drawSunkenRectangle(dc,x,0,w,height);
-          }
-        else{
-          if(options&FRAME_THICK) drawDoubleRaisedRectangle(dc,x,0,w,height);
-          else drawRaisedRectangle(dc,x,0,w,height);
-          }
         }
-      x+=w;
-      }
-    if(x<width){
-      if(options&FRAME_THICK) drawDoubleRaisedRectangle(dc,x,0,width-x,height);
-      else drawRaisedRectangle(dc,x,0,width-x,height);
       }
     }
   return 1;
@@ -626,14 +919,15 @@ long FXHeader::onPaint(FXObject*,FXSelector,void* ptr){
 
 
 // We were asked about tip text
-long FXHeader::onQueryTip(FXObject* sender,FXSelector,void*){
-  FXint index,cx,cy; FXuint btns;
+long FXHeader::onQueryTip(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXWindow::onQueryTip(sender,sel,ptr)) return 1;
   if(flags&FLAG_TIP){
+    FXint index,cx,cy; FXuint btns;
     getCursorPosition(cx,cy,btns);
     index=getItemAt((options&HEADER_VERTICAL)?cy:cx);
-    if(0<=index){
+    if(0<=index && index<items.no()){
       FXString string=items[index]->getText();
-      sender->handle(this,MKUINT(ID_SETSTRINGVALUE,SEL_COMMAND),(void*)&string);
+      sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&string);
       return 1;
       }
     }
@@ -642,10 +936,10 @@ long FXHeader::onQueryTip(FXObject* sender,FXSelector,void*){
 
 
 // We were asked about status text
-long FXHeader::onQueryHelp(FXObject* sender,FXSelector,void*){
-  if(!help.empty() && (flags&FLAG_HELP)){
-    FXTRACE((250,"%s::onQueryHelp %p\n",getClassName(),this));
-    sender->handle(this,MKUINT(ID_SETSTRINGVALUE,SEL_COMMAND),(void*)&help);
+long FXHeader::onQueryHelp(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXWindow::onQueryHelp(sender,sel,ptr)) return 1;
+  if((flags&FLAG_HELP) && !help.empty()){
+    sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&help);
     return 1;
     }
   return 0;
@@ -655,7 +949,6 @@ long FXHeader::onQueryHelp(FXObject* sender,FXSelector,void*){
 // We timed out, i.e. the user didn't move for a while
 long FXHeader::onTipTimer(FXObject*,FXSelector,void*){
   FXTRACE((250,"%s::onTipTimer %p\n",getClassName(),this));
-  timer=NULL;
   flags|=FLAG_TIP;
   return 1;
   }
@@ -664,111 +957,43 @@ long FXHeader::onTipTimer(FXObject*,FXSelector,void*){
 
 // Button being pressed
 long FXHeader::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
-  FXEvent* ev=(FXEvent*)ptr;
-  FXint i,x,y,w,h;
+  FXEvent* event=(FXEvent*)ptr;
+  FXint coord;
   flags&=~FLAG_TIP;
-  handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   if(isEnabled()){
     grab();
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONPRESS),ptr)) return 1;
-    if(options&HEADER_VERTICAL){
-      for(i=0,y=0; i<nitems; i++){
-        h=items[i]->getHeight(this);
 
-        // Hit a header button?
-        if((options&HEADER_BUTTON) && y+FUDGE<=ev->win_y && ev->win_y<y+h-FUDGE){
-          active=i;
-          activepos=y;
-          activesize=h;
-          state=TRUE;
-          update(0,activepos,width,activesize);
-          flags&=~FLAG_UPDATE;
-          flags|=FLAG_PRESSED;
-          break;
-          }
+    // First change callback
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
 
-        // Upper end of a button
-        if(y+h-FUDGE<=ev->win_y && ev->win_y<y+h){
-          setDragCursor(getApp()->getDefaultCursor(DEF_VSPLIT_CURSOR));
-          active=i;
-          activepos=y;
-          activesize=h;
-          flags|=FLAG_DODRAG;
-          flags&=~FLAG_UPDATE;
-          flags|=FLAG_PRESSED;
-          break;
-          }
-
-        // Lower end of last button at this place
-        if(y+h<=ev->win_y && ev->win_y<y+h+FUDGE){
-          setDragCursor(getApp()->getDefaultCursor(DEF_VSPLIT_CURSOR));
-          active=i;
-          activepos=y;
-          activesize=h;
-          flags|=FLAG_DODRAG;
-          flags&=~FLAG_UPDATE;
-          flags|=FLAG_PRESSED;
-          }
-
-        // Hit nothing, next item
-        y+=h;
+    // Where clicked
+    coord=(options&HEADER_VERTICAL)?event->win_y:event->win_x;
+    active=getItemAt(coord);
+    if(0<=active){
+      if(active<items.no() && pos+items[active]->getPos()+items[active]->getSize()-FUDGE<coord){
+        activepos=pos+items[active]->getPos();
+        activesize=items[active]->getSize();
+        offset=coord-activepos-activesize;
+        setDragCursor((options&HEADER_VERTICAL)?getApp()->getDefaultCursor(DEF_VSPLIT_CURSOR):getApp()->getDefaultCursor(DEF_HSPLIT_CURSOR));
+        flags|=FLAG_PRESSED|FLAG_TRYDRAG;
         }
-
-      // Dragging
-      if(flags&FLAG_DODRAG){
-        off=ev->win_y-activepos-activesize;
-        if(!(options&HEADER_TRACKING)) drawSplit(activepos+activesize);
+      else if(0<active && coord<pos+items[active-1]->getPos()+items[active-1]->getSize()+FUDGE){
+        active--;
+        activepos=pos+items[active]->getPos();
+        activesize=items[active]->getSize();
+        offset=coord-activepos-activesize;
+        setDragCursor((options&HEADER_VERTICAL)?getApp()->getDefaultCursor(DEF_VSPLIT_CURSOR):getApp()->getDefaultCursor(DEF_HSPLIT_CURSOR));
+        flags|=FLAG_PRESSED|FLAG_TRYDRAG;
+        }
+      else if(active<items.no()){
+        activepos=pos+items[active]->getPos();
+        activesize=items[active]->getSize();
+        setItemPressed(active,TRUE);
+        flags|=FLAG_PRESSED;
         }
       }
-    else{
-      for(i=0,x=0; i<nitems; i++){
-        w=items[i]->getWidth(this);
-
-        // Hit a header button?
-        if((options&HEADER_BUTTON) && x+FUDGE<=ev->win_x && ev->win_x<x+w-FUDGE){
-          active=i;
-          activepos=x;
-          activesize=w;
-          state=TRUE;
-          update(activepos,0,activesize,height);
-          flags&=~FLAG_UPDATE;
-          flags|=FLAG_PRESSED;
-          break;
-          }
-
-        // Upper end of a button
-        if(x+w-FUDGE<=ev->win_x && ev->win_x<x+w){
-          setDragCursor(getApp()->getDefaultCursor(DEF_HSPLIT_CURSOR));
-          active=i;
-          activepos=x;
-          activesize=w;
-          flags|=FLAG_DODRAG;
-          flags&=~FLAG_UPDATE;
-          flags|=FLAG_PRESSED;
-          break;
-          }
-
-        // Lower end of last button at this place
-        if(x+w<=ev->win_x && ev->win_x<x+w+FUDGE){
-          setDragCursor(getApp()->getDefaultCursor(DEF_HSPLIT_CURSOR));
-          active=i;
-          activepos=x;
-          activesize=w;
-          flags|=FLAG_DODRAG;
-          flags&=~FLAG_UPDATE;
-          flags|=FLAG_PRESSED;
-          }
-
-        // Hit nothing, next item
-        x+=w;
-        }
-
-      // Dragging
-      if(flags&FLAG_DODRAG){
-        off=ev->win_x-activepos-activesize;
-        if(!(options&HEADER_TRACKING)) drawSplit(activepos+activesize);
-        }
-      }
+    flags&=~FLAG_UPDATE;
     return 1;
     }
   return 0;
@@ -777,29 +1002,42 @@ long FXHeader::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
 
 // Button being released
 long FXHeader::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
-  flags&=~FLAG_PRESSED;
-  flags|=FLAG_UPDATE;
+  FXuint flg=flags;
   if(isEnabled()){
     ungrab();
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONRELEASE),ptr)) return 1;
-    if(flags&FLAG_DODRAG){
-      setDragCursor(getApp()->getDefaultCursor(DEF_ARROW_CURSOR));
+    flags|=FLAG_UPDATE;
+    flags&=~(FLAG_PRESSED|FLAG_DODRAG|FLAG_TRYDRAG);
+
+    // First chance callback
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
+
+    // Set cursor back
+    setDragCursor(getApp()->getDefaultCursor(DEF_ARROW_CURSOR));
+
+    // Clicked on split
+    if(flg&FLAG_TRYDRAG){
+      if(target) target->tryHandle(this,FXSEL(SEL_CLICKED,message),(void*)(FXival)active);
+      return 1;
+      }
+
+    // Dragged split
+    if(flg&FLAG_DODRAG){
       if(!(options&HEADER_TRACKING)){
         drawSplit(activepos+activesize);
         setItemSize(active,activesize);
-        if(target) target->handle(this,MKUINT(message,SEL_CHANGED),(void*)(FXival)active);
+        if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)active);
         }
-      flags&=~FLAG_DODRAG;
+      return 1;
       }
-    else if(state){
-      state=FALSE;
-      if(options&HEADER_VERTICAL)
-        update(0,activepos,width,activesize);
-      else
-        update(activepos,0,activesize,height);
-      if(target) target->handle(this,MKUINT(message,SEL_COMMAND),(void*)(FXival)active);
+
+    // Pressed button
+    if(flg&FLAG_PRESSED){
+      if(items[active]->isPressed()){
+        setItemPressed(active,FALSE);
+        if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)active);
+        }
+      return 1;
       }
-    return 1;
     }
   return 0;
   }
@@ -807,103 +1045,89 @@ long FXHeader::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
 
 // Button being moved
 long FXHeader::onMotion(FXObject*,FXSelector,void* ptr){
-  FXEvent* ev=(FXEvent*)ptr;
-  FXint i,x,y,w,h,oldsplit,newsplit;
+  FXEvent* event=(FXEvent*)ptr;
+  FXint oldsplit,newsplit,index;
   FXuint flg=flags;
 
   // Kill the tip
   flags&=~FLAG_TIP;
 
   // Kill the tip timer
-  if(timer) timer=getApp()->removeTimeout(timer);
+  getApp()->removeTimeout(this,ID_TIPTIMER);
 
-  // Had the button pressed
-  if(flags&FLAG_PRESSED){
+  // Tentatively dragging split
+  if(flags&FLAG_TRYDRAG){
+    if(!(options&HEADER_TRACKING)) drawSplit(activepos+activesize);
+    flags&=~FLAG_TRYDRAG;
+    flags|=FLAG_DODRAG;
+    return 1;
+    }
 
-    // We were dragging a split
-    if(flags&FLAG_DODRAG){
-      oldsplit=activepos+activesize;
-      if(options&HEADER_VERTICAL)
-        activesize=ev->win_y-off-activepos;
-      else
-        activesize=ev->win_x-off-activepos;
-      if(activesize<0) activesize=0;
-      newsplit=activepos+activesize;
-      if(newsplit!=oldsplit){
-        if(!(options&HEADER_TRACKING)){
-          drawSplit(oldsplit);
-          drawSplit(newsplit);
-          }
-        else{
-          setItemSize(active,activesize);
-          if(target) target->handle(this,MKUINT(message,SEL_CHANGED),(void*)(FXival)active);
-          }
-        }
-      }
-
-    // We pressed the button
-    else{
-      if(options&HEADER_VERTICAL){
-        if(activepos<=ev->win_y && ev->win_y<activepos+activesize && 0<=ev->win_x && ev->win_x<width){
-          if(!state){
-            state=TRUE;
-            update(0,activepos,width,activesize);
-            }
-          }
-        else{
-          if(state){
-            state=FALSE;
-            update(0,activepos,width,activesize);
-            }
-          }
+  // Dragging split
+  if(flags&FLAG_DODRAG){
+    oldsplit=activepos+activesize;
+    if(options&HEADER_VERTICAL)
+      activesize=event->win_y-offset-activepos;
+    else
+      activesize=event->win_x-offset-activepos;
+    if(activesize<0) activesize=0;
+    newsplit=activepos+activesize;
+    if(newsplit!=oldsplit){
+      if(!(options&HEADER_TRACKING)){
+        drawSplit(oldsplit);
+        drawSplit(newsplit);
         }
       else{
-        if(activepos<=ev->win_x && ev->win_x<activepos+activesize && 0<=ev->win_y && ev->win_y<height){
-          if(!state){
-            state=TRUE;
-            update(activepos,0,activesize,height);
-            }
-          }
-        else{
-          if(state){
-            state=FALSE;
-            update(activepos,0,activesize,height);
-            }
-          }
+        setItemSize(active,activesize);
+        if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)active);
         }
       }
     return 1;
     }
 
-  // If over a split, show split cursor
-  if(isEnabled()){
+  // Had the button pressed
+  if(flags&FLAG_PRESSED){
     if(options&HEADER_VERTICAL){
-      for(i=0,y=0; i<nitems; i++){
-        h=items[i]->getHeight(this);
-        if(y+h-FUDGE<=ev->win_y && ev->win_y<y+h+FUDGE){
-          setDefaultCursor(getApp()->getDefaultCursor(DEF_VSPLIT_CURSOR));
-          return 1;
-          }
-        y+=h;
+      if(activepos<=event->win_y && event->win_y<activepos+activesize && 0<=event->win_x && event->win_x<width){
+        setItemPressed(active,TRUE);
+        }
+      else{
+        setItemPressed(active,FALSE);
         }
       }
     else{
-      for(i=0,x=0; i<nitems; i++){
-        w=items[i]->getWidth(this);
-        if(x+w-FUDGE<=ev->win_x && ev->win_x<x+w+FUDGE){
-          setDefaultCursor(getApp()->getDefaultCursor(DEF_HSPLIT_CURSOR));
-          return 1;
-          }
-        x+=w;
+      if(activepos<=event->win_x && event->win_x<activepos+activesize && 0<=event->win_y && event->win_y<height){
+        setItemPressed(active,TRUE);
         }
+      else{
+        setItemPressed(active,FALSE);
+        }
+      }
+    return 1;
+    }
+
+  // When hovering over a split, show the split cursor
+  if(options&HEADER_VERTICAL){
+    index=getItemAt(event->win_y-FUDGE);
+    if(0<=index && index<items.no() && pos+items[index]->getPos()+items[index]->getSize()-FUDGE<event->win_y){
+      setDefaultCursor(getApp()->getDefaultCursor(DEF_VSPLIT_CURSOR));
+      }
+    else{
+      setDefaultCursor(getApp()->getDefaultCursor(DEF_ARROW_CURSOR));
+      }
+    }
+  else{
+    index=getItemAt(event->win_x-FUDGE);
+    if(0<=index && index<items.no() && pos+items[index]->getPos()+items[index]->getSize()-FUDGE<event->win_x){
+      setDefaultCursor(getApp()->getDefaultCursor(DEF_HSPLIT_CURSOR));
+      }
+    else{
+      setDefaultCursor(getApp()->getDefaultCursor(DEF_ARROW_CURSOR));
       }
     }
 
-  // Not over a split, back to normal cursor
-  setDefaultCursor(getApp()->getDefaultCursor(DEF_ARROW_CURSOR));
-
   // Reset tip timer if nothing's going on
-  timer=getApp()->addTimeout(getApp()->getMenuPause(),this,ID_TIPTIMER);
+  getApp()->addTimeout(this,ID_TIPTIMER,getApp()->getMenuPause());
 
   // Force GUI update only when needed
   return (flg&FLAG_TIP);
@@ -921,10 +1145,10 @@ long FXHeader::onUngrabbed(FXObject* sender,FXSelector sel,void* ptr){
 
 
 // Draw the split
-void FXHeader::drawSplit(FXint pos){
+void FXHeader::drawSplit(FXint p){
   FXDCWindow dc(getParent());
   FXint px,py;
-  translateCoordinatesTo(px,py,getParent(),pos,pos);
+  translateCoordinatesTo(px,py,getParent(),p,p);
   dc.clipChildren(FALSE);
   dc.setFunction(BLT_NOT_DST);
   if(options&HEADER_VERTICAL){
@@ -932,6 +1156,18 @@ void FXHeader::drawSplit(FXint pos){
     }
   else{
     dc.fillRectangle(px,0,2,getParent()->getHeight());
+    }
+  }
+
+
+// Set position, scrolling contents
+void FXHeader::setPosition(FXint p){
+  if(pos!=p){
+    if(options&HEADER_VERTICAL)
+      scroll(0,0,width,height,0,p-pos);
+    else
+      scroll(0,0,width,height,p-pos,0);
+    pos=p;
     }
   }
 
@@ -959,7 +1195,7 @@ void FXHeader::setTextColor(FXColor clr){
 // Header style change
 void FXHeader::setHeaderStyle(FXuint style){
   FXuint opts=(options&~HEADER_MASK) | (style&HEADER_MASK);
-  if(options!=opts){    // Thanks to: Hartmut Scholz <hartmut.scholz@firemail.de>
+  if(options!=opts){
     options=opts;
     recalc();
     update();
@@ -981,35 +1217,31 @@ void FXHeader::setHelpText(const FXString& text){
 
 // Save object to stream
 void FXHeader::save(FXStream& store) const {
-  register FXint i;
   FXFrame::save(store);
-  store << nitems;
-  for(i=0; i<nitems; i++){store<<items[i];}
+  items.save(store);
   store << textColor;
   store << font;
   store << help;
+  store << pos;
   }
 
 
 
 // Load object from stream
 void FXHeader::load(FXStream& store){
-  register FXint i;
   FXFrame::load(store);
-  store >> nitems;
-  FXRESIZE(&items,FXHeaderItem*,nitems);
-  for(i=0; i<nitems; i++){store>>items[i];}
+  items.load(store);
   store >> textColor;
   store >> font;
   store >> help;
+  store >> pos;
   }
 
 
 // Clean up
 FXHeader::~FXHeader(){
-  if(timer){getApp()->removeTimeout(timer);}
+  getApp()->removeTimeout(this,ID_TIPTIMER);
   clearItems();
-  items=(FXHeaderItem**)-1;
-  font=(FXFont*)-1;
-  timer=(FXTimer*)-1;
+  font=(FXFont*)-1L;
   }
+}

@@ -3,7 +3,7 @@
 *                         M e n u   C o m m a n d    W i d g e t                *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMenuCommand.cpp,v 1.39 2002/01/18 22:43:01 jeroen Exp $                *
+* $Id: FXMenuCommand.cpp,v 1.62 2005/01/16 16:06:07 fox Exp $                   *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -40,7 +42,6 @@
 
 /*
   Notes:
-  - Accelerators.
   - Help text from constructor is third part; second part should be
     accelerator key combination.
   - When menu label changes, hotkey might have to be adjusted.
@@ -50,14 +51,19 @@
   - Look into SEL_FOCUS_SELF some more...
   - We handle left, middle, right mouse buttons exactly the same;
     this permits popup menus posted by any mouse button.
+  - MenuCommand should flip state when invoked, and send new state along
+    in ptr in callback.
 */
 
 
 #define LEADSPACE   22
 #define TRAILSPACE  16
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXMenuCommand) FXMenuCommandMap[]={
@@ -74,11 +80,6 @@ FXDEFMAP(FXMenuCommand) FXMenuCommandMap[]={
   FXMAPFUNC(SEL_KEYRELEASE,0,FXMenuCommand::onKeyRelease),
   FXMAPFUNC(SEL_KEYPRESS,FXWindow::ID_HOTKEY,FXMenuCommand::onHotKeyPress),
   FXMAPFUNC(SEL_KEYRELEASE,FXWindow::ID_HOTKEY,FXMenuCommand::onHotKeyRelease),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_CHECK,FXMenuCommand::onCheck),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_UNCHECK,FXMenuCommand::onUncheck),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_SETVALUE,FXMenuCommand::onCmdSetValue),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_SETINTVALUE,FXMenuCommand::onCmdSetIntValue),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_GETINTVALUE,FXMenuCommand::onCmdGetIntValue),
   FXMAPFUNC(SEL_COMMAND,FXWindow::ID_ACCEL,FXMenuCommand::onCmdAccel),
   };
 
@@ -90,7 +91,6 @@ FXIMPLEMENT(FXMenuCommand,FXMenuCaption,FXMenuCommandMap,ARRAYNUMBER(FXMenuComma
 // Command menu item
 FXMenuCommand::FXMenuCommand(){
   flags|=FLAG_ENABLED;
-  state=MENUSTATE_NORMAL;
   acckey=0;
   }
 
@@ -99,20 +99,19 @@ FXMenuCommand::FXMenuCommand(){
 FXMenuCommand::FXMenuCommand(FXComposite* p,const FXString& text,FXIcon* ic,FXObject* tgt,FXSelector sel,FXuint opts):
   FXMenuCaption(p,text,ic,opts){
   FXAccelTable *table;
-  FXWindow *owner;
+  FXWindow *own;
   flags|=FLAG_ENABLED;
   defaultCursor=getApp()->getDefaultCursor(DEF_RARROW_CURSOR);
   target=tgt;
   message=sel;
-  state=MENUSTATE_NORMAL;
-  accel=text.extract(1,'\t');
-  acckey=fxparseaccel(accel.text());
+  accel=text.section('\t',1);
+  acckey=fxparseAccel(accel);
   if(acckey){
-    owner=getShell()->getOwner();
-    if(owner){
-      table=owner->getAccelTable();
+    own=getShell()->getOwner();
+    if(own){
+      table=own->getAccelTable();
       if(table){
-        table->addAccel(acckey,this,MKUINT(ID_ACCEL,SEL_COMMAND));
+        table->addAccel(acckey,this,FXSEL(SEL_COMMAND,ID_ACCEL));
         }
       }
     }
@@ -133,8 +132,8 @@ FXint FXMenuCommand::getDefaultWidth(){
 
 // Get default height
 FXint FXMenuCommand::getDefaultHeight(){
-  FXint th,ih,h;
-  th=ih=h=0;
+  FXint th,ih;
+  th=ih=0;
   if(!label.empty() || !accel.empty()) th=font->getFontHeight()+5;
   if(icon) ih=icon->getHeight()+5;
   return FXMAX(th,ih);
@@ -143,41 +142,6 @@ FXint FXMenuCommand::getDefaultHeight(){
 
 // If window can have focus
 FXbool FXMenuCommand::canFocus() const {
-  return 1;
-  }
-
-
-// Check the menu button
-long FXMenuCommand::onCheck(FXObject*,FXSelector,void*){
-  check();
-  return 1;
-  }
-
-
-// Check the menu button
-long FXMenuCommand::onUncheck(FXObject*,FXSelector,void*){
-  uncheck();
-  return 1;
-  }
-
-
-// Update value from a message
-long FXMenuCommand::onCmdSetValue(FXObject*,FXSelector,void* ptr){
-  if(ptr) check(); else uncheck();
-  return 1;
-  }
-
-
-// Update value from a message
-long FXMenuCommand::onCmdSetIntValue(FXObject*,FXSelector,void* ptr){
-  if(*((FXint*)ptr)) check(); else uncheck();
-  return 1;
-  }
-
-
-// Obtain value from text field
-long FXMenuCommand::onCmdGetIntValue(FXObject*,FXSelector,void* ptr){
-  *((FXint*)ptr)=isChecked();
   return 1;
   }
 
@@ -209,8 +173,8 @@ long FXMenuCommand::onButtonPress(FXObject*,FXSelector,void*){
 long FXMenuCommand::onButtonRelease(FXObject*,FXSelector,void*){
   FXbool active=isActive();
   if(!isEnabled()) return 0;
-  getParent()->handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
-  if(active && target){ target->handle(this,MKUINT(message,SEL_COMMAND),(void*)1); }
+  getParent()->handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
+  if(active && target){ target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXuval)1); }
   return 1;
   }
 
@@ -220,7 +184,6 @@ long FXMenuCommand::onKeyPress(FXObject*,FXSelector,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(!isEnabled()) return 0;
   FXTRACE((200,"%s::onKeyPress %p keysym=0x%04x state=%04x\n",getClassName(),this,event->code,event->state));
-  //if(target && target->handle(this,MKUINT(message,SEL_KEYPRESS),ptr)) return 1;
   switch(event->code){
     case KEY_KP_Enter:
     case KEY_Return:
@@ -237,14 +200,13 @@ long FXMenuCommand::onKeyRelease(FXObject*,FXSelector,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(!isEnabled()) return 0;
   FXTRACE((200,"%s::onKeyRelease %p keysym=0x%04x state=%04x\n",getClassName(),this,event->code,event->state));
-  //if(target && target->handle(this,MKUINT(message,SEL_KEYRELEASE),ptr)) return 1;
   switch(event->code){
     case KEY_KP_Enter:
     case KEY_Return:
     case KEY_space:
     case KEY_KP_Space:
-      getParent()->handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
-      if(target) target->handle(this,MKUINT(message,SEL_COMMAND),(void*)1);
+      getParent()->handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXuval)1);
       return 1;
     }
   return 0;
@@ -254,7 +216,7 @@ long FXMenuCommand::onKeyRelease(FXObject*,FXSelector,void* ptr){
 // Hot key combination pressed
 long FXMenuCommand::onHotKeyPress(FXObject*,FXSelector,void* ptr){
   FXTRACE((200,"%s::onHotKeyPress %p\n",getClassName(),this));
-  handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   return 1;
   }
 
@@ -263,8 +225,8 @@ long FXMenuCommand::onHotKeyPress(FXObject*,FXSelector,void* ptr){
 long FXMenuCommand::onHotKeyRelease(FXObject*,FXSelector,void*){
   FXTRACE((200,"%s::onHotKeyRelease %p\n",getClassName(),this));
   if(isEnabled()){
-    getParent()->handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
-    if(target) target->handle(this,MKUINT(message,SEL_COMMAND),(void*)1);
+    getParent()->handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
+    if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXuval)1);
     }
   return 1;
   }
@@ -273,7 +235,7 @@ long FXMenuCommand::onHotKeyRelease(FXObject*,FXSelector,void*){
 // Accelerator activated
 long FXMenuCommand::onCmdAccel(FXObject*,FXSelector,void*){
   if(isEnabled()){
-    if(target) target->handle(this,MKUINT(message,SEL_COMMAND),(void*)1);
+    if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXuval)1);
     return 1;
     }
   return 0;
@@ -298,54 +260,6 @@ void FXMenuCommand::killFocus(){
   }
 
 
-// Show checked
-void FXMenuCommand::check(){
-  if(state!=MENUSTATE_CHECKED){
-    state=MENUSTATE_CHECKED;
-    update();
-    }
-  }
-
-
-// Show unchecked
-void FXMenuCommand::uncheck(){
-  if(state!=MENUSTATE_NORMAL){
-    state=MENUSTATE_NORMAL;
-    update();
-    }
-  }
-
-
-// Check if checked
-FXint FXMenuCommand::isChecked() const {
-  return (state==MENUSTATE_CHECKED);
-  }
-
-
-// Show radio checked
-void FXMenuCommand::checkRadio(){
-  if(state!=MENUSTATE_RCHECKED){
-    state=MENUSTATE_RCHECKED;
-    update();
-    }
-  }
-
-
-// Show radio unchecked
-void FXMenuCommand::uncheckRadio(){
-  if(state!=MENUSTATE_NORMAL){
-    state=MENUSTATE_NORMAL;
-    update();
-    }
-  }
-
-
-// See if radio checked
-FXint FXMenuCommand::isRadioChecked() const {
-  return (state==MENUSTATE_RCHECKED);
-  }
-
-
 // Handle repaint
 long FXMenuCommand::onPaint(FXObject*,FXSelector,void* ptr){
   FXEvent *ev=(FXEvent*)ptr;
@@ -364,27 +278,15 @@ long FXMenuCommand::onPaint(FXObject*,FXSelector,void* ptr){
       }
     if(!label.empty()){
       yy=font->getFontAscent()+(height-font->getFontHeight())/2;
-      dc.setTextFont(font);
+      dc.setFont(font);
       dc.setForeground(hiliteColor);
       dc.drawText(xx+1,yy+1,label.text(),label.length());
+      if(!accel.empty()) dc.drawText(width-TRAILSPACE-font->getTextWidth(accel.text(),accel.length())+1,yy+1,accel.text(),accel.length());
+      if(0<=hotoff) dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff)+1,yy+2,font->getTextWidth(&label[hotoff],1),1);
       dc.setForeground(shadowColor);
       dc.drawText(xx,yy,label.text(),label.length());
       if(!accel.empty()) dc.drawText(width-TRAILSPACE-font->getTextWidth(accel.text(),accel.length()),yy,accel.text(),accel.length());
-      if(0<=hotoff){
-        dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],1),1);
-        }
-      }
-    if(state==MENUSTATE_CHECKED){
-      dc.setForeground(hiliteColor);
-      drawCheck(dc,6,1+(height-8)/2);
-      dc.setForeground(shadowColor);
-      drawCheck(dc,5,(height-8)/2);
-      }
-    if(state==MENUSTATE_RCHECKED){
-      dc.setForeground(hiliteColor);
-      drawBullit(dc,8,1+(height-5)/2);
-      dc.setForeground(shadowColor);
-      drawBullit(dc,7,(height-5)/2);
+      if(0<=hotoff) dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],1),1);
       }
     }
 
@@ -398,21 +300,11 @@ long FXMenuCommand::onPaint(FXObject*,FXSelector,void* ptr){
       }
     if(!label.empty()){
       yy=font->getFontAscent()+(height-font->getFontHeight())/2;
-      dc.setTextFont(font);
+      dc.setFont(font);
       dc.setForeground(isEnabled() ? seltextColor : shadowColor);
       dc.drawText(xx,yy,label.text(),label.length());
       if(!accel.empty()) dc.drawText(width-TRAILSPACE-font->getTextWidth(accel.text(),accel.length()),yy,accel.text(),accel.length());
-      if(0<=hotoff){
-        dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],1),1);
-        }
-      }
-    if(state==MENUSTATE_CHECKED){
-      dc.setForeground(seltextColor);
-      drawCheck(dc,5,(height-8)/2);
-      }
-    if(state==MENUSTATE_RCHECKED){
-      dc.setForeground(seltextColor);
-      drawBullit(dc,7,(height-5)/2);
+      if(0<=hotoff) dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],1),1);
       }
     }
 
@@ -426,49 +318,14 @@ long FXMenuCommand::onPaint(FXObject*,FXSelector,void* ptr){
       }
     if(!label.empty()){
       yy=font->getFontAscent()+(height-font->getFontHeight())/2;
-      dc.setTextFont(font);
+      dc.setFont(font);
       dc.setForeground(textColor);
       dc.drawText(xx,yy,label.text(),label.length());
       if(!accel.empty()) dc.drawText(width-TRAILSPACE-font->getTextWidth(accel.text(),accel.length()),yy,accel.text(),accel.length());
-      if(0<=hotoff){
-        dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],1),1);
-        }
-      }
-    if(state==MENUSTATE_CHECKED){
-      dc.setForeground(textColor);
-      drawCheck(dc,5,(height-8)/2);
-      }
-    if(state==MENUSTATE_RCHECKED){
-      dc.setForeground(textColor);
-      drawBullit(dc,7,(height-5)/2);
+      if(0<=hotoff) dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],1),1);
       }
     }
   return 1;
-  }
-
-
-// Draw check mark
-void FXMenuCommand::drawCheck(FXDCWindow& dc,FXint x,FXint y){
-  FXSegment seg[6];
-  seg[0].x1=1+x; seg[0].y1=3+y; seg[0].x2=3+x; seg[0].y2=5+y;
-  seg[1].x1=1+x; seg[1].y1=4+y; seg[1].x2=3+x; seg[1].y2=6+y;
-  seg[2].x1=1+x; seg[2].y1=5+y; seg[2].x2=3+x; seg[2].y2=7+y;
-  seg[3].x1=3+x; seg[3].y1=5+y; seg[3].x2=7+x; seg[3].y2=1+y;
-  seg[4].x1=3+x; seg[4].y1=6+y; seg[4].x2=7+x; seg[4].y2=2+y;
-  seg[5].x1=3+x; seg[5].y1=7+y; seg[5].x2=7+x; seg[5].y2=3+y;
-  dc.drawLineSegments(seg,6);
-  }
-
-
-// Draw bullit
-void FXMenuCommand::drawBullit(FXDCWindow& dc,FXint x,FXint y){
-  FXSegment seg[5];
-  seg[0].x1= 1+x; seg[0].y1 = 0+y; seg[0].x2 = 3+x; seg[0].y2 = 0+y;
-  seg[1].x1= 0+x; seg[1].y1 = 1+y; seg[1].x2 = 4+x; seg[1].y2 = 1+y;
-  seg[2].x1= 0+x; seg[2].y1 = 2+y; seg[2].x2 = 4+x; seg[2].y2 = 2+y;
-  seg[3].x1= 0+x; seg[3].y1 = 3+y; seg[3].x2 = 4+x; seg[3].y2 = 3+y;
-  seg[4].x1= 1+x; seg[4].y1 = 4+y; seg[4].x2 = 3+x; seg[4].y2 = 4+y;
-  dc.drawLineSegments(seg,5);
   }
 
 
@@ -487,7 +344,6 @@ void FXMenuCommand::setAccelText(const FXString& text){
 // Save object to stream
 void FXMenuCommand::save(FXStream& store) const {
   FXMenuCaption::save(store);
-  store << state;
   store << accel;
   store << acckey;
   }
@@ -496,7 +352,6 @@ void FXMenuCommand::save(FXStream& store) const {
 // Load object from stream
 void FXMenuCommand::load(FXStream& store){
   FXMenuCaption::load(store);
-  store >> state;
   store >> accel;
   store >> acckey;
   }
@@ -505,14 +360,16 @@ void FXMenuCommand::load(FXStream& store){
 // Need to uninstall accelerator
 FXMenuCommand::~FXMenuCommand(){
   FXAccelTable *table;
-  FXWindow *owner;
+  FXWindow *own;
   if(acckey){
-    owner=getShell()->getOwner();
-    if(owner){
-      table=owner->getAccelTable();
+    own=getShell()->getOwner();
+    if(own){
+      table=own->getAccelTable();
       if(table){
         table->removeAccel(acckey);
         }
       }
     }
   }
+
+}

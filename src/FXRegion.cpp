@@ -3,7 +3,7 @@
 *                      C l i p p i n g   R e g i o n                            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2000,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 2000,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,17 +19,31 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXRegion.cpp,v 1.10 2002/01/18 22:43:02 jeroen Exp $                      *
+* $Id: FXRegion.cpp,v 1.27 2005/01/16 16:06:07 fox Exp $                        *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
 #include "FXStream.h"
 #include "FXSize.h"
 #include "FXPoint.h"
 #include "FXRectangle.h"
 #include "FXRegion.h"
 
+
+/*
+  Notes:
+  - Add some more ways to create regions
+
+*/
+
+
+using namespace FX;
+
+/*******************************************************************************/
+
+namespace FX {
 
 // Construct new empty region
 FXRegion::FXRegion(){
@@ -41,7 +55,7 @@ FXRegion::FXRegion(){
   }
 
 
-// Construct new region set to given rectangle
+// Construct rectangle region
 FXRegion::FXRegion(FXint x,FXint y,FXint w,FXint h){
 #ifndef WIN32
   XRectangle r;
@@ -50,6 +64,33 @@ FXRegion::FXRegion(FXint x,FXint y,FXint w,FXint h){
   XUnionRectWithRegion(&r,(Region)region,(Region)region);
 #else
   region=(void*)CreateRectRgn(x,y,x+w,y+h);
+#endif
+  }
+
+
+// Construct new region from rectangle rect
+FXRegion::FXRegion(const FXRectangle& rect){
+#ifndef WIN32
+  region=XCreateRegion();
+  XUnionRectWithRegion((XRectangle*)&rect,(Region)region,(Region)region);
+#else
+  region=(void*)CreateRectRgn(rect.x,rect.y,rect.x+rect.w,rect.y+rect.h);
+#endif
+  }
+
+
+// Construct polygon region
+FXRegion::FXRegion(const FXPoint* points,FXuint npoints,FXbool winding){
+#ifndef WIN32
+  region=XPolygonRegion((XPoint*)points,npoints,winding?WindingRule:EvenOddRule);
+#else
+  register FXuint i;
+  POINT pts[1024];
+  for(i=0; i<npoints; i++){
+    pts[i].x=points[i].x;
+    pts[i].y=points[i].y;
+    }
+  region=(void*)CreatePolygonRgn(pts,npoints,winding?WINDING:ALTERNATE);
 #endif
   }
 
@@ -117,17 +158,19 @@ FXbool FXRegion::contains(FXint x,FXint y,FXint w,FXint h) const {
 
 
 // Return bounding box
-void FXRegion::bounds(FXRectangle& r) const {
+FXRectangle FXRegion::bounds() const {
+  FXRectangle result;
 #ifndef WIN32
-  XClipBox((Region)region,(XRectangle*)&r);
+  XClipBox((Region)region,(XRectangle*)&result);
 #else
   RECT rect;
   GetRgnBox((HRGN)region,&rect);
-  r.x=(FXshort)rect.left;
-  r.y=(FXshort)rect.top;
-  r.w=(FXshort)(rect.right-rect.left);
-  r.h=(FXshort)(rect.bottom-rect.top);
+  result.x=(FXshort)rect.left;
+  result.y=(FXshort)rect.top;
+  result.w=(FXshort)(rect.right-rect.left);
+  result.h=(FXshort)(rect.bottom-rect.top);
 #endif
+  return result;
   }
 
 
@@ -266,6 +309,18 @@ FXbool operator!=(const FXRegion& r1,const FXRegion& r2){
   }
 
 
+// Reset region to empty
+void FXRegion::reset(){
+#ifndef WIN32
+  XDestroyRegion((Region)region);
+  region=XCreateRegion();
+#else
+  DeleteObject((HRGN)region);
+  region=(void*)CreateRectRgn(0,0,0,0);
+#endif
+  }
+
+
 // Destroy region
 FXRegion::~FXRegion(){
 #ifndef WIN32
@@ -274,4 +329,6 @@ FXRegion::~FXRegion(){
   DeleteObject((HRGN)region);
 #endif
   }
+
+}
 

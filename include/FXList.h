@@ -3,7 +3,7 @@
 *                            L i s t   W i d g e t                              *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXList.h,v 1.51 2002/01/18 22:42:53 jeroen Exp $                         *
+* $Id: FXList.h,v 1.82 2005/02/06 17:20:00 fox Exp $                            *
 ********************************************************************************/
 #ifndef FXLIST_H
 #define FXLIST_H
@@ -28,6 +28,7 @@
 #include "FXScrollArea.h"
 #endif
 
+namespace FX {
 
 
 /// List styles
@@ -44,7 +45,6 @@ enum {
 class FXIcon;
 class FXFont;
 class FXList;
-struct FXTimer;
 
 
 /// List item
@@ -61,39 +61,83 @@ protected:
   FXListItem():icon(NULL),data(NULL),state(0),x(0),y(0){}
   virtual void draw(const FXList* list,FXDC& dc,FXint x,FXint y,FXint w,FXint h);
   virtual FXint hitItem(const FXList* list,FXint x,FXint y) const;
-protected:
+public:
   enum {
-    SELECTED  = 1,
-    FOCUS     = 2,
-    DISABLED  = 4,
-    DRAGGABLE = 8,
-    ICONOWNED = 16
+    SELECTED  = 1,      /// Selected
+    FOCUS     = 2,      /// Focus
+    DISABLED  = 4,      /// Disabled
+    DRAGGABLE = 8,      /// Draggable
+    ICONOWNED = 16      /// Icon owned by item
     };
 public:
+
+  /// Construct new item with given text, icon, and user-data
   FXListItem(const FXString& text,FXIcon* ic=NULL,void* ptr=NULL):label(text),icon(ic),data(ptr),state(0),x(0),y(0){}
-  virtual void setText(const FXString& txt){ label=txt; }
-  FXString getText() const { return label; }
-  virtual void setIcon(FXIcon* icn){ icon=icn; }
+
+  /// Change item's text label
+  virtual void setText(const FXString& txt);
+
+  /// Return item's text label
+  const FXString& getText() const { return label; }
+
+  /// Change item's icon, deleting the old icon if it was owned
+  virtual void setIcon(FXIcon* icn,FXbool owned=FALSE);
+
+  /// Return item's icon
   FXIcon* getIcon() const { return icon; }
+
+  /// Change item's user data
   void setData(void* ptr){ data=ptr; }
+
+  /// Get item's user data
   void* getData() const { return data; }
+
+  /// Make item draw as focused
   virtual void setFocus(FXbool focus);
+
+  /// Return true if item has focus
   FXbool hasFocus() const { return (state&FOCUS)!=0; }
+
+  /// Select item
   virtual void setSelected(FXbool selected);
+
+  /// Return true if this item is selected
   FXbool isSelected() const { return (state&SELECTED)!=0; }
+
+  /// Enable or disable item
   virtual void setEnabled(FXbool enabled);
+
+  /// Return true if this item is enabled
   FXbool isEnabled() const { return (state&DISABLED)==0; }
+
+  /// Make item draggable
   virtual void setDraggable(FXbool draggable);
+
+  /// Return true if this item is draggable
   FXbool isDraggable() const { return (state&DRAGGABLE)!=0; }
-  virtual void setIconOwned(FXuint owned=ICONOWNED);
-  FXuint isIconOwned() const { return (state&ICONOWNED); }
+
+  /// Return width of item as drawn in list
   virtual FXint getWidth(const FXList* list) const;
+
+  /// Return height of item as drawn in list
   virtual FXint getHeight(const FXList* list) const;
+
+  /// Create server-side resources
   virtual void create();
+
+  /// Detach server-side resources
   virtual void detach();
+
+  /// Destroy server-side resources
   virtual void destroy();
+
+  /// Save to stream
   virtual void save(FXStream& store) const;
+
+  /// Load from stream
   virtual void load(FXStream& store);
+
+  /// Destroy item and free icons if owned
   virtual ~FXListItem();
   };
 
@@ -102,12 +146,26 @@ public:
 typedef FXint (*FXListSortFunc)(const FXListItem*,const FXListItem*);
 
 
-/// List Widget
+typedef FXObjectListOf<FXListItem> FXListItemList;
+
+
+/**
+* A List Widget displays a list of items, each with a text and
+* optional icon.  When an item's selected state changes, the list sends
+* a SEL_SELECTED or SEL_DESELECTED message.  A change of the current
+* item is signified by the SEL_CHANGED message.
+* The list sends SEL_COMMAND messages when the user clicks on an item,
+* and SEL_CLICKED, SEL_DOUBLECLICKED, and SEL_TRIPLECLICKED when the user
+* clicks once, twice, or thrice, respectively.
+* When items are added, replaced, or removed, the list sends messages of
+* the type SEL_INSERTED, SEL_REPLACED, or SEL_DELETED.
+* In each of these cases, the index to the item, if any, is passed in the
+* 3rd argument of the message.
+*/
 class FXAPI FXList : public FXScrollArea {
   FXDECLARE(FXList)
 protected:
-  FXListItem   **items;             // Item list
-  FXint          nitems;            // Number of items
+  FXListItemList items;             // Item list
   FXint          anchor;            // Anchor item
   FXint          current;           // Current item
   FXint          extent;            // Extent item
@@ -124,12 +182,9 @@ protected:
   FXint          grabx;             // Grab point x
   FXint          graby;             // Grab point y
   FXString       lookup;            // Lookup string
-  FXTimer       *timer;             // Tip hover timer
-  FXTimer       *lookuptimer;       // Lookup timer
   FXbool         state;             // State of item
 protected:
   FXList();
-  virtual void layout();
   void recompute();
   virtual FXListItem *createItem(const FXString& text,FXIcon* icon,void* ptr);
 private:
@@ -164,22 +219,26 @@ public:
 public:
   static FXint ascending(const FXListItem* a,const FXListItem* b);
   static FXint descending(const FXListItem* a,const FXListItem* b);
+  static FXint ascendingCase(const FXListItem* a,const FXListItem* b);
+  static FXint descendingCase(const FXListItem* a,const FXListItem* b);
 public:
   enum {
-    ID_TIPTIMER=FXScrollArea::ID_LAST,
-    ID_LOOKUPTIMER,
+    ID_LOOKUPTIMER=FXScrollArea::ID_LAST,
     ID_LAST
     };
 public:
 
-  /// Construct a list with nvis visible items; the list is initially empty
-  FXList(FXComposite *p,FXint nvis,FXObject* tgt=NULL,FXSelector sel=0,FXuint opts=LIST_NORMAL,FXint x=0,FXint y=0,FXint w=0,FXint h=0);
+  /// Construct a list with initially no items in it
+  FXList(FXComposite *p,FXObject* tgt=NULL,FXSelector sel=0,FXuint opts=LIST_NORMAL,FXint x=0,FXint y=0,FXint w=0,FXint h=0);
 
   /// Create server-side resources
   virtual void create();
 
   /// Detach server-side resources
   virtual void detach();
+
+  /// Perform layout
+  virtual void layout();
 
   /// Return default width
   virtual FXint getDefaultWidth();
@@ -206,7 +265,7 @@ public:
   virtual void killFocus();
 
   /// Return the number of items in the list
-  FXint getNumItems() const { return nitems; }
+  FXint getNumItems() const { return items.no(); }
 
   /// Return number of visible items
   FXint getNumVisible() const { return visible; }
@@ -215,13 +274,19 @@ public:
   void setNumVisible(FXint nvis);
 
   /// Return the item at the given index
-  FXListItem *retrieveItem(FXint index) const;
+  FXListItem *getItem(FXint index) const;
 
   /// Replace the item with a [possibly subclassed] item
-  FXint replaceItem(FXint index,FXListItem* item,FXbool notify=FALSE);
+  FXint setItem(FXint index,FXListItem* item,FXbool notify=FALSE);
 
   /// Replace items text, icon, and user-data pointer
-  FXint replaceItem(FXint index,const FXString& text,FXIcon *icon=NULL,void* ptr=NULL,FXbool notify=FALSE);
+  FXint setItem(FXint index,const FXString& text,FXIcon *icon=NULL,void* ptr=NULL,FXbool notify=FALSE);
+
+  /// Fill list by appending items from array of strings
+  FXint fillItems(const FXchar** strings,FXIcon *icon=NULL,void* ptr=NULL,FXbool notify=FALSE);
+
+  /// Fill list by appending items from newline separated strings
+  FXint fillItems(const FXString& strings,FXIcon *icon=NULL,void* ptr=NULL,FXbool notify=FALSE);
 
   /// Insert a new [possibly subclassed] item at the give index
   FXint insertItem(FXint index,FXListItem* item,FXbool notify=FALSE);
@@ -241,6 +306,9 @@ public:
   /// Prepend new item with given text and optional icon, and user-data pointer
   FXint prependItem(const FXString& text,FXIcon *icon=NULL,void* ptr=NULL,FXbool notify=FALSE);
 
+  /// Move item from oldindex to newindex
+  FXint moveItem(FXint newindex,FXint oldindex,FXbool notify=FALSE);
+
   /// Remove item from list
   void removeItem(FXint index,FXbool notify=FALSE);
 
@@ -254,19 +322,37 @@ public:
   FXint getItemHeight(FXint index) const;
 
   /// Return index of item at x,y, if any
-  FXint getItemAt(FXint x,FXint y) const;
+  virtual FXint getItemAt(FXint x,FXint y) const;
 
   /// Return item hit code: 0 no hit; 1 hit the icon; 2 hit the text
   FXint hitItem(FXint index,FXint x,FXint y) const;
 
   /**
-  * Search items for item by name, starting from start item; the
-  * flags argument controls the search direction, and case sensitivity.
+  * Search items by name, beginning from item start.  If the start
+  * item is -1 the search will start at the first item in the list.
+  * Flags may be SEARCH_FORWARD or SEARCH_BACKWARD to control the
+  * search direction; this can be combined with SEARCH_NOWRAP or SEARCH_WRAP
+  * to control whether the search wraps at the start or end of the list.
+  * The option SEARCH_IGNORECASE causes a case-insensitive match.  Finally,
+  * passing SEARCH_PREFIX causes searching for a prefix of the item name.
+  * Return -1 if no matching item is found.
   */
   FXint findItem(const FXString& text,FXint start=-1,FXuint flags=SEARCH_FORWARD|SEARCH_WRAP) const;
 
+  /**
+  * Search items by associated user data, beginning from item start. If the
+  * start item is -1 the search will start at the first item in the list.
+  * Flags may be SEARCH_FORWARD or SEARCH_BACKWARD to control the
+  * search direction; this can be combined with SEARCH_NOWRAP or SEARCH_WRAP
+  * to control whether the search wraps at the start or end of the list.
+  * The option SEARCH_IGNORECASE causes a case-insensitive match.  Finally,
+  * passing SEARCH_PREFIX causes searching for a prefix of the item name.
+  * Return -1 if no matching item is found.
+  */
+  FXint findItemByData(const void *ptr,FXint start=-1,FXuint flags=SEARCH_FORWARD|SEARCH_WRAP) const;
+
   /// Scroll to bring item into view
-  void makeItemVisible(FXint index);
+  virtual void makeItemVisible(FXint index);
 
   /// Change item text
   void setItemText(FXint index,const FXString& text);
@@ -274,8 +360,8 @@ public:
   /// Return item text
   FXString getItemText(FXint index) const;
 
-  /// Change item icon
-  void setItemIcon(FXint index,FXIcon* icon);
+  /// Change item icon, deleting the old icon if it was owned
+  void setItemIcon(FXint index,FXIcon* icon,FXbool owned=FALSE);
 
   /// Return item icon, if any
   FXIcon* getItemIcon(FXint index) const;
@@ -299,25 +385,31 @@ public:
   FXbool isItemEnabled(FXint index) const;
 
   /// Repaint item
-  void updateItem(FXint index);
+  void updateItem(FXint index) const;
 
   /// Enable item
-  FXbool enableItem(FXint index);
+  virtual FXbool enableItem(FXint index);
 
   /// Disable item
-  FXbool disableItem(FXint index);
+  virtual FXbool disableItem(FXint index);
 
   /// Select item
-  FXbool selectItem(FXint index,FXbool notify=FALSE);
+  virtual FXbool selectItem(FXint index,FXbool notify=FALSE);
 
   /// Deselect item
-  FXbool deselectItem(FXint index,FXbool notify=FALSE);
+  virtual FXbool deselectItem(FXint index,FXbool notify=FALSE);
 
   /// Toggle item selection state
-  FXbool toggleItem(FXint index,FXbool notify=FALSE);
+  virtual FXbool toggleItem(FXint index,FXbool notify=FALSE);
+
+  /// Extend selection from anchor item to index
+  virtual FXbool extendSelection(FXint index,FXbool notify=FALSE);
+
+  /// Deselect all items
+  virtual FXbool killSelection(FXbool notify=FALSE);
 
   /// Change current item
-  void setCurrentItem(FXint index,FXbool notify=FALSE);
+  virtual void setCurrentItem(FXint index,FXbool notify=FALSE);
 
   /// Return current item, if any
   FXint getCurrentItem() const { return current; }
@@ -331,14 +423,14 @@ public:
   /// Get item under the cursor, if any
   FXint getCursorItem() const { return cursor; }
 
-  /// Extend selection from anchor item to index
-  FXbool extendSelection(FXint index,FXbool notify=FALSE);
-
-  /// Deselect all items
-  FXbool killSelection(FXbool notify=FALSE);
-
   /// Sort items using current sort function
   void sortItems();
+
+  /// Return sort function
+  FXListSortFunc getSortFunc() const { return sortfunc; }
+
+  /// Change sort function
+  void setSortFunc(FXListSortFunc func){ sortfunc=func; }
 
   /// Change text font
   void setFont(FXFont* fnt);
@@ -364,12 +456,6 @@ public:
   /// Change selected text color
   void setSelTextColor(FXColor clr);
 
-  /// Return sort function
-  FXListSortFunc getSortFunc() const { return sortfunc; }
-
-  /// Change sort function
-  void setSortFunc(FXListSortFunc func){ sortfunc=func; }
-
   /// Return list style
   FXuint getListStyle() const;
 
@@ -380,7 +466,7 @@ public:
   void setHelpText(const FXString& text);
 
   /// Get the status line help text for this list
-  FXString getHelpText() const { return help; }
+  const FXString& getHelpText() const { return help; }
 
   /// Save list to a stream
   virtual void save(FXStream& store) const;
@@ -392,5 +478,6 @@ public:
   virtual ~FXList();
   };
 
+}
 
 #endif

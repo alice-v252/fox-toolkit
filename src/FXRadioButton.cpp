@@ -3,7 +3,7 @@
 *                  R a d i o   B u t t o n    O b j e c t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXRadioButton.cpp,v 1.38.4.1 2003/06/20 19:02:07 fox Exp $                *
+* $Id: FXRadioButton.cpp,v 1.58 2005/01/16 16:06:07 fox Exp $                   *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -43,12 +45,18 @@
   - "&Label\tTooltip\tHelptext\thttp://server/application/helponitem.html"
   - CheckButton should send SEL_COMMAND.
   - Default button mode:- should somehow get focus.
+  - Weird state change still possible using both keyboard and mouse if two
+    radio buttons are involved.
 */
 
 
 #define RADIOBUTTON_MASK  (RADIOBUTTON_AUTOGRAY|RADIOBUTTON_AUTOHIDE)
 
+using namespace FX;
+
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXRadioButton) FXRadioButtonMap[]={
@@ -65,13 +73,12 @@ FXDEFMAP(FXRadioButton) FXRadioButtonMap[]={
   FXMAPFUNC(SEL_KEYRELEASE,0,FXRadioButton::onKeyRelease),
   FXMAPFUNC(SEL_KEYPRESS,FXWindow::ID_HOTKEY,FXRadioButton::onHotKeyPress),
   FXMAPFUNC(SEL_KEYRELEASE,FXWindow::ID_HOTKEY,FXRadioButton::onHotKeyRelease),
-  FXMAPFUNC(SEL_UNCHECK_RADIO,0,FXRadioButton::onUncheckRadio),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_CHECK,FXRadioButton::onCheck),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_UNCHECK,FXRadioButton::onUncheck),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_UNKNOWN,FXRadioButton::onUnknown),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_SETVALUE,FXRadioButton::onCmdSetValue),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_SETINTVALUE,FXRadioButton::onCmdSetIntValue),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_GETINTVALUE,FXRadioButton::onCmdGetIntValue),
+  FXMAPFUNC(SEL_COMMAND,FXRadioButton::ID_CHECK,FXRadioButton::onCheck),
+  FXMAPFUNC(SEL_COMMAND,FXRadioButton::ID_UNCHECK,FXRadioButton::onUncheck),
+  FXMAPFUNC(SEL_COMMAND,FXRadioButton::ID_UNKNOWN,FXRadioButton::onUnknown),
+  FXMAPFUNC(SEL_COMMAND,FXRadioButton::ID_SETVALUE,FXRadioButton::onCmdSetValue),
+  FXMAPFUNC(SEL_COMMAND,FXRadioButton::ID_SETINTVALUE,FXRadioButton::onCmdSetIntValue),
+  FXMAPFUNC(SEL_COMMAND,FXRadioButton::ID_GETINTVALUE,FXRadioButton::onCmdGetIntValue),
   };
 
 
@@ -81,20 +88,22 @@ FXIMPLEMENT(FXRadioButton,FXLabel,FXRadioButtonMap,ARRAYNUMBER(FXRadioButtonMap)
 
 // Deserialization
 FXRadioButton::FXRadioButton(){
+  radioColor=0;
+  diskColor=0;
   check=FALSE;
   oldcheck=FALSE;
-  radioColor=0;
   }
 
 
 // Make a check button
 FXRadioButton::FXRadioButton(FXComposite* p,const FXString& text,FXObject* tgt,FXSelector sel,FXuint opts,FXint x,FXint y,FXint w,FXint h,FXint pl,FXint pr,FXint pt,FXint pb):
   FXLabel(p,text,NULL,opts,x,y,w,h,pl,pr,pt,pb){
+  radioColor=getApp()->getForeColor();
+  diskColor=getApp()->getBackColor();
   target=tgt;
   message=sel;
   check=FALSE;
   oldcheck=FALSE;
-  radioColor=getApp()->getBackColor();
   }
 
 
@@ -176,16 +185,6 @@ long FXRadioButton::onCmdGetIntValue(FXObject*,FXSelector,void* ptr){
   }
 
 
-// Uncheck radio button, sent from parent
-long FXRadioButton::onUncheckRadio(FXObject*,FXSelector,void*){
-  if(check){
-    setCheck(FALSE);
-    if(target && target->handle(this,MKUINT(message,SEL_COMMAND),(void*)(long)check)) return 1;
-    }
-  return 0;
-  }
-
-
 // Implement auto-hide or auto-gray modes
 long FXRadioButton::onUpdate(FXObject* sender,FXSelector sel,void* ptr){
   if(!FXLabel::onUpdate(sender,sel,ptr)){
@@ -230,11 +229,11 @@ long FXRadioButton::onLeave(FXObject* sender,FXSelector sel,void* ptr){
 
 // Pressed mouse button
 long FXRadioButton::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
-  handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   flags&=~FLAG_TIP;
   if(isEnabled() && !(flags&FLAG_PRESSED)){
     grab();
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONPRESS),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
     oldcheck=check;
     setCheck(TRUE);
     flags|=FLAG_PRESSED;
@@ -249,13 +248,10 @@ long FXRadioButton::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
 long FXRadioButton::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
   if(isEnabled() && (flags&FLAG_PRESSED)){
     ungrab();
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONRELEASE),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
     flags|=FLAG_UPDATE;
     flags&=~FLAG_PRESSED;
-    if(check!=oldcheck){
-      getParent()->handle(this,MKUINT(0,SEL_UNCHECK_OTHER),NULL);
-      if(target) target->handle(this,MKUINT(message,SEL_COMMAND),(void*)(long)check);
-      }
+    if(check!=oldcheck && target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXuval)TRUE);
     return 1;
     }
   return 0;
@@ -277,7 +273,7 @@ long FXRadioButton::onKeyPress(FXObject*,FXSelector,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   flags&=~FLAG_TIP;
   if(isEnabled() && !(flags&FLAG_PRESSED)){
-    if(target && target->handle(this,MKUINT(message,SEL_KEYPRESS),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
     if(event->code==KEY_space || event->code==KEY_KP_Space){
       oldcheck=check;
       setCheck(TRUE);
@@ -294,14 +290,11 @@ long FXRadioButton::onKeyPress(FXObject*,FXSelector,void* ptr){
 long FXRadioButton::onKeyRelease(FXObject*,FXSelector,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(isEnabled() && (flags&FLAG_PRESSED)){
-    if(target && target->handle(this,MKUINT(message,SEL_KEYRELEASE),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
     if(event->code==KEY_space || event->code==KEY_KP_Space){
       flags|=FLAG_UPDATE;
       flags&=~FLAG_PRESSED;
-      if(check!=oldcheck){
-        getParent()->handle(this,MKUINT(0,SEL_UNCHECK_OTHER),NULL);
-        if(target) target->handle(this,MKUINT(message,SEL_COMMAND),(void*)(long)check);
-        }
+      if(check!=oldcheck && target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXuval)TRUE);
       return 1;
       }
     }
@@ -311,7 +304,7 @@ long FXRadioButton::onKeyRelease(FXObject*,FXSelector,void* ptr){
 
 // Hot key combination pressed
 long FXRadioButton::onHotKeyPress(FXObject*,FXSelector,void* ptr){
-  handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   flags&=~FLAG_TIP;
   if(isEnabled() && !(flags&FLAG_PRESSED)){
     oldcheck=check;
@@ -329,10 +322,7 @@ long FXRadioButton::onHotKeyRelease(FXObject*,FXSelector,void*){
   if(isEnabled() && (flags&FLAG_PRESSED)){
     flags|=FLAG_UPDATE;
     flags&=~FLAG_PRESSED;
-    if(check!=oldcheck){
-      getParent()->handle(this,MKUINT(0,SEL_UNCHECK_OTHER),NULL);
-      if(target) target->handle(this,MKUINT(message,SEL_COMMAND),(void*)(long)check);
-      }
+    if(check!=oldcheck && target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXuval)TRUE);
     }
   return 1;
   }
@@ -342,7 +332,7 @@ long FXRadioButton::onHotKeyRelease(FXObject*,FXSelector,void*){
 long FXRadioButton::onPaint(FXObject*,FXSelector,void* ptr){
   FXEvent *ev=(FXEvent*)ptr;
   FXint tw=0,th=0,tx,ty,ix,iy;
-
+  FXRectangle recs[6];
   FXDCWindow dc(this,ev);
 
   dc.setForeground(backColor);
@@ -375,7 +365,6 @@ long FXRadioButton::onPaint(FXObject*,FXSelector,void* ptr){
 
       012345678901
 */
-  FXRectangle recs[16];
 
   // Inside
   recs[0].x=ix+4; recs[0].y=iy+2; recs[0].w=4; recs[0].h=1;
@@ -386,7 +375,7 @@ long FXRadioButton::onPaint(FXObject*,FXSelector,void* ptr){
   if(!isEnabled())                   // fix by Daniel Gehriger (gehriger@linkcad.com)
     dc.setForeground(baseColor);
   else
-    dc.setForeground(radioColor);
+    dc.setForeground(diskColor);
   dc.fillRectangles(recs,5);
 
   // Top left outside
@@ -435,36 +424,15 @@ long FXRadioButton::onPaint(FXObject*,FXSelector,void* ptr){
     recs[1].x=ix+4; recs[1].y=iy+5; recs[1].w=4; recs[1].h=2;
     recs[2].x=ix+5; recs[2].y=iy+7; recs[2].w=2; recs[2].h=1;
     if(isEnabled())
-      dc.setForeground(textColor);
+      dc.setForeground(radioColor);
     else
       dc.setForeground(shadowColor);
     dc.fillRectangles(recs,3);
     }
 
-//   dc.fillArc(ix+1,iy+1,11,11,0,23040);
-//
-//   dc.setForeground(shadowColor);
-//   dc.drawArc(ix,iy,13,13,45*64,180*64);
-//
-//   dc.setForeground(hiliteColor);
-//   dc.drawArc(ix,iy,13,13,225*64,180*64);
-//
-//   dc.setForeground(borderColor);
-//   dc.drawArc(ix+1,iy+1,11,11,45*64,180*64);
-//
-//   dc.setForeground(baseColor);
-//   dc.drawArc(ix+1,iy+1,11,11,225*64,180*64);
-//
-//   if(check!=FALSE){
-//     if(isEnabled())
-//       dc.setForeground(textColor);
-//     else
-//       dc.setForeground(shadowColor);
-//     dc.fillArc(ix+3,iy+3,7,7,0,23040);
-//     }
-
+  // Label
   if(!label.empty()){
-    dc.setTextFont(font);
+    dc.setFont(font);
     if(isEnabled()){
       dc.setForeground(textColor);
       drawLabel(dc,label,hotoff,tx,ty,tw,th);
@@ -484,10 +452,19 @@ long FXRadioButton::onPaint(FXObject*,FXSelector,void* ptr){
   }
 
 
-// Set box color
+// Set radio color
 void FXRadioButton::setRadioColor(FXColor clr){
   if(radioColor!=clr){
     radioColor=clr;
+    update();
+    }
+  }
+
+
+// Set disk color
+void FXRadioButton::setDiskColor(FXColor clr){
+  if(clr!=diskColor){
+    diskColor=clr;
     update();
     }
   }
@@ -513,6 +490,7 @@ FXuint FXRadioButton::getRadioButtonStyle() const {
 void FXRadioButton::save(FXStream& store) const {
   FXLabel::save(store);
   store << radioColor;
+  store << diskColor;
   }
 
 
@@ -520,5 +498,8 @@ void FXRadioButton::save(FXStream& store) const {
 void FXRadioButton::load(FXStream& store){
   FXLabel::load(store);
   store >> radioColor;
+  store >> diskColor;
   }
+
+}
 

@@ -3,7 +3,7 @@
 *                        G I F   I c o n   O b j e c t                          *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,15 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXGIFIcon.cpp,v 1.11 2002/01/18 22:43:00 jeroen Exp $                    *
+* $Id: FXGIFIcon.cpp,v 1.27 2005/01/16 16:06:07 fox Exp $                       *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
+#include "FXMemoryStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
@@ -43,18 +46,26 @@
   - If that doesn't work, you can force a specific transparency color.
 */
 
+using namespace FX;
+
 /*******************************************************************************/
+
+namespace FX {
+
+
+// Suggested file extension
+const FXchar FXGIFIcon::fileExt[]="gif";
+
 
 // Object implementation
 FXIMPLEMENT(FXGIFIcon,FXIcon,NULL,0)
 
 
 // Initialize nicely
-FXGIFIcon::FXGIFIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FXint h):
-  FXIcon(a,NULL,clr,opts&~IMAGE_ALPHA,w,h){
+FXGIFIcon::FXGIFIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FXint h):FXIcon(a,NULL,clr,opts,w,h){
   if(pix){
     FXMemoryStream ms;
-    ms.open((FXuchar*)pix,FXStreamLoad);
+    ms.open(FXStreamLoad,(FXuchar*)pix);
     loadPixels(ms);
     ms.close();
     }
@@ -62,22 +73,23 @@ FXGIFIcon::FXGIFIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FX
 
 
 // Save object to stream
-void FXGIFIcon::savePixels(FXStream& store) const {
-  FXASSERT(!(options&IMAGE_ALPHA));
-  fxsaveGIF(store,data,transp,width,height);
+FXbool FXGIFIcon::savePixels(FXStream& store) const {
+  if(fxsaveGIF(store,data,width,height)){
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
 // Load object from stream
-void FXGIFIcon::loadPixels(FXStream& store){
-  FXColor clearcolor=0;
-  if(options&IMAGE_OWNED){FXFREE(&data);}
-  fxloadGIF(store,data,clearcolor,width,height);
-  if(!(options&IMAGE_ALPHACOLOR)) transp=clearcolor;
-  if(options&IMAGE_ALPHAGUESS) transp=guesstransp();
-  if(transp==0) options|=IMAGE_OPAQUE;
-  options&=~IMAGE_ALPHA;
-  options|=IMAGE_OWNED;
+FXbool FXGIFIcon::loadPixels(FXStream& store){
+  FXColor *pixels; FXint w,h;
+  if(fxloadGIF(store,pixels,w,h)){
+    setData(pixels,IMAGE_OWNED,w,h);
+    if(options&IMAGE_ALPHAGUESS) transp=guesstransp();
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
@@ -85,4 +97,4 @@ void FXGIFIcon::loadPixels(FXStream& store){
 FXGIFIcon::~FXGIFIcon(){
   }
 
-
+}

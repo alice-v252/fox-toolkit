@@ -3,7 +3,7 @@
 *                   M a t r i x   C o n t a i n e r   O b j e c t               *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMatrix.cpp,v 1.17.4.1 2002/05/31 15:00:46 fox Exp $                     *
+* $Id: FXMatrix.cpp,v 1.32 2005/01/16 16:06:07 fox Exp $                        *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -59,14 +61,23 @@
     [4] [5] [6]
     [7] [8] [9]
 
+  - Possible solution for spanning rows/columns: have a table
+    containing mapping from FXWindow* to (nr,nc) span.  Consult
+    table during layout.  All children not listed are 1x1, special
+    API add/remove items to the table.  Each layout, any item in the
+    table for which there is no corresponding child is removed.
+    Advantage: no need to add any special info into FXWindow.  Also,
+    no need for any special API to add item into matrix.
 
 */
 
 #define MAXNUM    512        // Maximum number of columns/rows
 
+using namespace FX;
 
 /*******************************************************************************/
 
+namespace FX {
 
 // Map
 FXDEFMAP(FXMatrix) FXMatrixMap[]={
@@ -100,21 +111,21 @@ FXWindow* FXMatrix::childAtRowCol(FXint r,FXint c) const {
 
 
 // Get child's row
-FXint FXMatrix::rowOfChild(FXWindow* child) const {
+FXint FXMatrix::rowOfChild(const FXWindow* child) const {
   register FXint i=indexOfChild(child);
   return (options&MATRIX_BY_COLUMNS) ? i/num : i%num;
   }
 
 
 // Get child's column
-FXint FXMatrix::colOfChild(FXWindow* child) const {
+FXint FXMatrix::colOfChild(const FXWindow* child) const {
   register FXint i=indexOfChild(child);
   return (options&MATRIX_BY_COLUMNS) ? i%num : i/num;
   }
 
 
 // Focus moved up
-long FXMatrix::onFocusUp(FXObject*,FXSelector sel,void* ptr){
+long FXMatrix::onFocusUp(FXObject*,FXSelector,void* ptr){
   register FXWindow *child;
   register FXint r,c;
   if(getFocus()){
@@ -122,11 +133,8 @@ long FXMatrix::onFocusUp(FXObject*,FXSelector sel,void* ptr){
     c=colOfChild(getFocus());
     while((child=childAtRowCol(--r,c))!=NULL){
       if(child->shown()){
-        if(child->isEnabled() && child->canFocus()){
-          child->handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-          return 1;
-          }
-        if(child->isComposite() && child->handle(this,sel,ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_UP,0),ptr)) return 1;
         }
       }
     }
@@ -134,11 +142,8 @@ long FXMatrix::onFocusUp(FXObject*,FXSelector sel,void* ptr){
     child=getLast();
     while(child){
       if(child->shown()){
-        if(child->isEnabled() && child->canFocus()){
-          child->handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-          return 1;
-          }
-        if(child->isComposite() && child->handle(this,sel,ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_UP,0),ptr)) return 1;
         }
       child=child->getPrev();
       }
@@ -148,7 +153,7 @@ long FXMatrix::onFocusUp(FXObject*,FXSelector sel,void* ptr){
 
 
 // Focus moved down
-long FXMatrix::onFocusDown(FXObject*,FXSelector sel,void* ptr){
+long FXMatrix::onFocusDown(FXObject*,FXSelector,void* ptr){
   register FXWindow *child;
   register FXint r,c;
   if(getFocus()){
@@ -156,11 +161,8 @@ long FXMatrix::onFocusDown(FXObject*,FXSelector sel,void* ptr){
     c=colOfChild(getFocus());
     while((child=childAtRowCol(++r,c))!=NULL){
       if(child->shown()){
-        if(child->isEnabled() && child->canFocus()){
-          child->handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-          return 1;
-          }
-        if(child->isComposite() && child->handle(this,sel,ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_DOWN,0),ptr)) return 1;
         }
       }
     }
@@ -168,11 +170,8 @@ long FXMatrix::onFocusDown(FXObject*,FXSelector sel,void* ptr){
     child=getFirst();
     while(child){
       if(child->shown()){
-        if(child->isEnabled() && child->canFocus()){
-          child->handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-          return 1;
-          }
-        if(child->isComposite() && child->handle(this,sel,ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_DOWN,0),ptr)) return 1;
         }
       child=child->getNext();
       }
@@ -182,7 +181,7 @@ long FXMatrix::onFocusDown(FXObject*,FXSelector sel,void* ptr){
 
 
 // Focus moved to left
-long FXMatrix::onFocusLeft(FXObject*,FXSelector sel,void* ptr){
+long FXMatrix::onFocusLeft(FXObject*,FXSelector,void* ptr){
   register FXWindow *child;
   register FXint r,c;
   if(getFocus()){
@@ -190,11 +189,8 @@ long FXMatrix::onFocusLeft(FXObject*,FXSelector sel,void* ptr){
     c=colOfChild(getFocus());
     while((child=childAtRowCol(r,--c))!=NULL){
       if(child->shown()){
-        if(child->isEnabled() && child->canFocus()){
-          child->handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-          return 1;
-          }
-        if(child->isComposite() && child->handle(this,sel,ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_LEFT,0),ptr)) return 1;
         }
       }
     }
@@ -202,11 +198,8 @@ long FXMatrix::onFocusLeft(FXObject*,FXSelector sel,void* ptr){
     child=getLast();
     while(child){
       if(child->shown()){
-        if(child->isEnabled() && child->canFocus()){
-          child->handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-          return 1;
-          }
-        if(child->isComposite() && child->handle(this,sel,ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_LEFT,0),ptr)) return 1;
         }
       child=child->getPrev();
       }
@@ -216,7 +209,7 @@ long FXMatrix::onFocusLeft(FXObject*,FXSelector sel,void* ptr){
 
 
 // Focus moved to right
-long FXMatrix::onFocusRight(FXObject*,FXSelector sel,void* ptr){
+long FXMatrix::onFocusRight(FXObject*,FXSelector,void* ptr){
   register FXWindow *child;
   register FXint r,c;
   if(getFocus()){
@@ -224,11 +217,8 @@ long FXMatrix::onFocusRight(FXObject*,FXSelector sel,void* ptr){
     c=colOfChild(getFocus());
     while((child=childAtRowCol(r,++c))!=NULL){
       if(child->shown()){
-        if(child->isEnabled() && child->canFocus()){
-          child->handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-          return 1;
-          }
-        if(child->isComposite() && child->handle(this,sel,ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_RIGHT,0),ptr)) return 1;
         }
       }
     }
@@ -236,11 +226,8 @@ long FXMatrix::onFocusRight(FXObject*,FXSelector sel,void* ptr){
     child=getFirst();
     while(child){
       if(child->shown()){
-        if(child->isEnabled() && child->canFocus()){
-          child->handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-          return 1;
-          }
-        if(child->isComposite() && child->handle(this,sel,ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+        if(child->handle(this,FXSEL(SEL_FOCUS_RIGHT,0),ptr)) return 1;
         }
       child=child->getNext();
       }
@@ -252,26 +239,32 @@ long FXMatrix::onFocusRight(FXObject*,FXSelector sel,void* ptr){
 // Set number of rows (if possible)
 void FXMatrix::setNumRows(FXint nr){
   if(nr<1 || nr>=MAXNUM){ fxerror("%s::setNumRows: bad number of rows specified.\n",getClassName()); }
-  if(!(options&MATRIX_BY_COLUMNS)) num=nr;
+  if(!(options&MATRIX_BY_COLUMNS) && num!=nr){
+    num=nr;
+    recalc();
+    }
   }
 
 
 // Get number of rows
 FXint FXMatrix::getNumRows() const {
-  return (options&MATRIX_BY_COLUMNS) ? (numChildren()+num-1)/num : num;
+  return (num && (options&MATRIX_BY_COLUMNS)) ? (numChildren()+num-1)/num : num;
   }
 
 
 // Set number of columns (if possible)
 void FXMatrix::setNumColumns(FXint nc){
   if(nc<1 || nc>=MAXNUM){ fxerror("%s::setNumColumns: bad number of columns specified.\n",getClassName()); }
-  if(options&MATRIX_BY_COLUMNS) num=nc;
+  if((options&MATRIX_BY_COLUMNS) && num!=nc){
+    num=nc;
+    recalc();
+    }
   }
 
 
 // Get number of columns
 FXint FXMatrix::getNumColumns() const {
-  return (options&MATRIX_BY_COLUMNS) ? num : (numChildren()+num-1)/num;
+  return (num && !(options&MATRIX_BY_COLUMNS)) ? (numChildren()+num-1)/num : num;
   }
 
 
@@ -525,3 +518,6 @@ void FXMatrix::setMatrixStyle(FXuint style){
 FXuint FXMatrix::getMatrixStyle() const {
   return options&MATRIX_BY_COLUMNS;
   }
+
+}
+

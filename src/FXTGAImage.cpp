@@ -3,7 +3,7 @@
 *                       T A R G A  I m a g e   O b j e c t                      *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2001,2002 by Janusz Ganczarski.   All Rights Reserved.          *
+* Copyright (C) 2001,2005 by Janusz Ganczarski.   All Rights Reserved.          *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,15 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXTGAImage.cpp,v 1.4 2002/01/18 22:55:04 jeroen Exp $                    *
+* $Id: FXTGAImage.cpp,v 1.21 2005/01/16 16:06:07 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
+#include "FXMemoryStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
@@ -39,41 +42,49 @@
   Notes:
 */
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
+
+
+// Suggested file extension
+const FXchar FXTGAImage::fileExt[]="tga";
+
 
 // Object implementation
 FXIMPLEMENT(FXTGAImage,FXImage,NULL,0)
 
 
-
 // Initialize
-FXTGAImage::FXTGAImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):
-  FXImage(a,NULL,opts&~IMAGE_ALPHA,w,h){
+FXTGAImage::FXTGAImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):FXImage(a,NULL,opts,w,h){
   if(pix){
     FXMemoryStream ms;
-    ms.open((FXuchar*)pix,FXStreamLoad);
-    fxloadTGA(ms,data,channels,width,height);
-    options|=IMAGE_OWNED;
+    ms.open(FXStreamLoad,(FXuchar*)pix);
+    loadPixels(ms);
     ms.close();
     }
   }
 
 
-// Save pixel data only
-void FXTGAImage::savePixels(FXStream& store) const {
-  FXASSERT(!(options&IMAGE_ALPHA));
-  fxsaveTGA(store,data,channels,width,height);
+// Save pixels to stream
+FXbool FXTGAImage::savePixels(FXStream& store) const {
+  if(fxsaveTGA(store,data,width,height)){
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
-// Load pixel data only
-void FXTGAImage::loadPixels(FXStream& store){
-  if(options&IMAGE_OWNED){FXFREE(&data);}
-  fxloadTGA(store,data,channels,width,height);
-  if (channels == 3)
-    options&=~IMAGE_ALPHA;
-  options|=IMAGE_OWNED;
+// Load pixels from stream
+FXbool FXTGAImage::loadPixels(FXStream& store){
+  FXColor *pixels; FXint w,h;
+  if(fxloadTGA(store,pixels,w,h)){
+    setData(pixels,IMAGE_OWNED,w,h);
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
@@ -81,5 +92,4 @@ void FXTGAImage::loadPixels(FXStream& store){
 FXTGAImage::~FXTGAImage(){
   }
 
-
-
+}

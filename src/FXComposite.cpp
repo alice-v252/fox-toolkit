@@ -3,7 +3,7 @@
 *                C o m p o s i t e   W i n d o w   O b j e c t                  *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXComposite.cpp,v 1.30 2002/01/18 22:42:59 jeroen Exp $                  *
+* $Id: FXComposite.cpp,v 1.49 2005/01/16 16:06:06 fox Exp $                     *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -40,9 +42,19 @@
 /*
   Notes:
   - Rather a slim class.
+  - Focus should be assigned to a window via SEL_FOCUSELF message.
+    Composite widgets won't have focus so SEL_FOCUSELF should return 0
+    and do nothing.
+  - Maybe add flag to exempt a widget from maxChildWidth() and/or maxChildHeight()
+    so that things like separators can stay small when everything else gets
+    as big as the biggest child.
 */
 
+using namespace FX;
+
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXComposite) FXCompositeMap[]={
@@ -185,7 +197,7 @@ long FXComposite::onCmdUpdate(FXObject* sender,FXSelector,void* ptr){
   register FXWindow *child;
   update();
   for(child=getFirst(); child; child=child->getNext()){
-    if(child->shown()) child->handle(sender,MKUINT(ID_UPDATE,SEL_COMMAND),ptr);
+    if(child->shown()) child->handle(sender,FXSEL(SEL_COMMAND,ID_UPDATE),ptr);
     }
   return 1;
   }
@@ -200,11 +212,8 @@ long FXComposite::onFocusNext(FXObject*,FXSelector sel,void* ptr){
     child=getFirst();
   while(child){
     if(child->shown()){
-      if(child->isEnabled() && child->canFocus()){
-        child->handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-        return 1;
-        }
-      if(child->isComposite() && child->handle(this,sel,ptr)) return 1;
+      if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+      if(child->handle(this,sel,ptr)) return 1;
       }
     child=child->getNext();
     }
@@ -221,11 +230,8 @@ long FXComposite::onFocusPrev(FXObject*,FXSelector sel,void* ptr){
     child=getLast();
   while(child){
     if(child->shown()){
-      if(child->isEnabled() && child->canFocus()){
-        child->handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-        return 1;
-        }
-      if(child->isComposite() && child->handle(this,sel,ptr)) return 1;
+      if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+      if(child->handle(this,sel,ptr)) return 1;
       }
     child=child->getPrev();
     }
@@ -235,37 +241,40 @@ long FXComposite::onFocusPrev(FXObject*,FXSelector sel,void* ptr){
 
 // Keyboard press
 long FXComposite::onKeyPress(FXObject* sender,FXSelector sel,void* ptr){
+  register FXEvent* event=(FXEvent*)ptr;
+
+  FXTRACE((200,"%p->%s::onKeyPress keysym=0x%04x state=%04x\n",this,getClassName(),((FXEvent*)ptr)->code,((FXEvent*)ptr)->state));
 
   // Bounce to focus widget
   if(getFocus() && getFocus()->handle(sender,sel,ptr)) return 1;
 
   // Try target first
-  if(isEnabled() && target && target->handle(this,MKUINT(message,SEL_KEYPRESS),ptr)) return 1;
+  if(isEnabled() && target && target->tryHandle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
 
   // Check the accelerators
   if(getAccelTable() && getAccelTable()->handle(this,sel,ptr)) return 1;
 
   // Otherwise, perform the default keyboard processing
-  switch(((FXEvent*)ptr)->code){
+  switch(MKUINT(event->code,event->state&(SHIFTMASK|CONTROLMASK|ALTMASK|METAMASK))){
     case KEY_Tab:
-      if(((FXEvent*)ptr)->state&SHIFTMASK) goto prv;
     case KEY_Next:
-      return handle(this,MKUINT(0,SEL_FOCUS_NEXT),ptr);
+      return handle(this,FXSEL(SEL_FOCUS_NEXT,0),ptr);
     case KEY_Prior:
     case KEY_ISO_Left_Tab:
-prv:  return handle(this,MKUINT(0,SEL_FOCUS_PREV),ptr);
+    case MKUINT(KEY_Tab,SHIFTMASK):     // Suggested by: chafar@alcances.net
+      return handle(this,FXSEL(SEL_FOCUS_PREV,0),ptr);
     case KEY_Up:
     case KEY_KP_Up:
-      return handle(this,MKUINT(0,SEL_FOCUS_UP),ptr);
+      return handle(this,FXSEL(SEL_FOCUS_UP,0),ptr);
     case KEY_Down:
     case KEY_KP_Down:
-      return handle(this,MKUINT(0,SEL_FOCUS_DOWN),ptr);
+      return handle(this,FXSEL(SEL_FOCUS_DOWN,0),ptr);
     case KEY_Left:
     case KEY_KP_Left:
-      return handle(this,MKUINT(0,SEL_FOCUS_LEFT),ptr);
+      return handle(this,FXSEL(SEL_FOCUS_LEFT,0),ptr);
     case KEY_Right:
     case KEY_KP_Right:
-      return handle(this,MKUINT(0,SEL_FOCUS_RIGHT),ptr);
+      return handle(this,FXSEL(SEL_FOCUS_RIGHT,0),ptr);
     }
   return 0;
   }
@@ -274,11 +283,13 @@ prv:  return handle(this,MKUINT(0,SEL_FOCUS_PREV),ptr);
 // Keyboard release
 long FXComposite::onKeyRelease(FXObject* sender,FXSelector sel,void* ptr){
 
+  FXTRACE((200,"%p->%s::onKeyRelease keysym=0x%04x state=%04x\n",this,getClassName(),((FXEvent*)ptr)->code,((FXEvent*)ptr)->state));
+
   // Bounce to focus widget
   if(getFocus() && getFocus()->handle(sender,sel,ptr)) return 1;
 
   // Try target first
-  if(isEnabled() && target && target->handle(this,MKUINT(message,SEL_KEYRELEASE),ptr)) return 1;
+  if(isEnabled() && target && target->tryHandle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
 
   // Check the accelerators
   if(getAccelTable() && getAccelTable()->handle(this,sel,ptr)) return 1;
@@ -292,4 +303,4 @@ FXComposite::~FXComposite(){
   while(getFirst()){ delete getFirst(); }
   }
 
-
+}

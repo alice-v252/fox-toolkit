@@ -3,7 +3,7 @@
 *                       M e n u   C a s c a d e   W i d g e t                   *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMenuCascade.cpp,v 1.32 2002/01/18 22:43:01 jeroen Exp $                *
+* $Id: FXMenuCascade.cpp,v 1.48 2005/01/16 16:06:07 fox Exp $                   *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -54,14 +56,17 @@
 #define LEADSPACE   22
 #define TRAILSPACE  16
 
+using namespace FX;
+
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXMenuCascade) FXMenuCascadeMap[]={
   FXMAPFUNC(SEL_PAINT,0,FXMenuCascade::onPaint),
   FXMAPFUNC(SEL_ENTER,0,FXMenuCascade::onEnter),
   FXMAPFUNC(SEL_LEAVE,0,FXMenuCascade::onLeave),
-  FXMAPFUNC(SEL_TIMEOUT,FXMenuCascade::ID_MENUTIMER,FXMenuCascade::onTimeout),
   FXMAPFUNC(SEL_LEFTBUTTONPRESS,0,FXMenuCascade::onButtonPress),
   FXMAPFUNC(SEL_LEFTBUTTONRELEASE,0,FXMenuCascade::onButtonRelease),
   FXMAPFUNC(SEL_MIDDLEBUTTONPRESS,0,FXMenuCascade::onButtonPress),
@@ -70,10 +75,11 @@ FXDEFMAP(FXMenuCascade) FXMenuCascadeMap[]={
   FXMAPFUNC(SEL_RIGHTBUTTONRELEASE,0,FXMenuCascade::onButtonRelease),
   FXMAPFUNC(SEL_KEYPRESS,0,FXMenuCascade::onKeyPress),
   FXMAPFUNC(SEL_KEYRELEASE,0,FXMenuCascade::onKeyRelease),
-  FXMAPFUNC(SEL_KEYPRESS,FXWindow::ID_HOTKEY,FXMenuCascade::onHotKeyPress),
-  FXMAPFUNC(SEL_KEYRELEASE,FXWindow::ID_HOTKEY,FXMenuCascade::onHotKeyRelease),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_POST,FXMenuCascade::onCmdPost),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_UNPOST,FXMenuCascade::onCmdUnpost),
+  FXMAPFUNC(SEL_KEYPRESS,FXMenuCascade::ID_HOTKEY,FXMenuCascade::onHotKeyPress),
+  FXMAPFUNC(SEL_KEYRELEASE,FXMenuCascade::ID_HOTKEY,FXMenuCascade::onHotKeyRelease),
+  FXMAPFUNC(SEL_TIMEOUT,FXMenuCascade::ID_MENUTIMER,FXMenuCascade::onCmdPost),
+  FXMAPFUNC(SEL_COMMAND,FXMenuCascade::ID_POST,FXMenuCascade::onCmdPost),
+  FXMAPFUNC(SEL_COMMAND,FXMenuCascade::ID_UNPOST,FXMenuCascade::onCmdUnpost),
   };
 
 
@@ -85,7 +91,6 @@ FXIMPLEMENT(FXMenuCascade,FXMenuCaption,FXMenuCascadeMap,ARRAYNUMBER(FXMenuCasca
 FXMenuCascade::FXMenuCascade(){
   flags|=FLAG_ENABLED;
   pane=NULL;
-  timer=NULL;
   }
 
 
@@ -95,7 +100,6 @@ FXMenuCascade::FXMenuCascade(FXComposite* p,const FXString& text,FXIcon* ic,FXPo
   defaultCursor=getApp()->getDefaultCursor(DEF_RARROW_CURSOR);
   flags|=FLAG_ENABLED;
   pane=pup;
-  timer=NULL;
   }
 
 
@@ -108,7 +112,7 @@ void FXMenuCascade::create(){
 
 // Detach X window
 void FXMenuCascade::detach(){
-  if(timer){ getApp()->removeTimeout(timer); timer=NULL; }
+  getApp()->removeTimeout(this,ID_MENUTIMER);
   FXMenuCaption::detach();
   if(pane) pane->detach();
   }
@@ -116,7 +120,7 @@ void FXMenuCascade::detach(){
 
 // Destroy window
 void FXMenuCascade::destroy(){
-  if(timer){ getApp()->removeTimeout(timer); timer=NULL; }
+  getApp()->removeTimeout(this,ID_MENUTIMER);
   FXMenuCaption::destroy();
   }
 
@@ -128,19 +132,18 @@ FXbool FXMenuCascade::canFocus() const {
 
 
 // Pressed button
-long FXMenuCascade::onButtonPress(FXObject*,FXSelector,void* ptr){
+long FXMenuCascade::onButtonPress(FXObject*,FXSelector,void*){
   if(!isEnabled()) return 0;
-  handle(this,MKUINT(ID_POST,SEL_COMMAND),ptr);
+  handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
   return 1;
   }
 
 
 // Released button
 long FXMenuCascade::onButtonRelease(FXObject*,FXSelector,void* ptr){
-  FXEvent* event=(FXEvent*)ptr;
   if(!isEnabled()) return 0;
-  if(event->moved){
-    getParent()->handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),ptr);
+  if(((FXEvent*)ptr)->moved){
+    getParent()->handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
     }
   return 1;
   }
@@ -151,13 +154,12 @@ long FXMenuCascade::onKeyPress(FXObject*,FXSelector sel,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(!isEnabled()) return 0;
   FXTRACE((200,"%s::onKeyPress %p keysym=0x%04x state=%04x\n",getClassName(),this,event->code,event->state));
-  //if(target && target->handle(this,MKUINT(message,SEL_KEYPRESS),ptr)) return 1;
   if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
   switch(event->code){
     case KEY_Right:
       if(pane && !pane->shown()){
         FXint x,y;
-        if(timer){ getApp()->removeTimeout(timer); timer=NULL; }
+        getApp()->removeTimeout(this,ID_MENUTIMER);
         translateCoordinatesTo(x,y,getRoot(),width,0);
         pane->popup(((FXMenuPane*)getParent())->getGrabOwner(),x,y);
         return 1;
@@ -165,7 +167,7 @@ long FXMenuCascade::onKeyPress(FXObject*,FXSelector sel,void* ptr){
       break;
     case KEY_Left:
       if(pane && pane->shown()){
-        if(timer){ getApp()->removeTimeout(timer); timer=NULL; }
+        getApp()->removeTimeout(this,ID_MENUTIMER);
         pane->popdown();
         return 1;
         }
@@ -174,7 +176,7 @@ long FXMenuCascade::onKeyPress(FXObject*,FXSelector sel,void* ptr){
     case KEY_Return:
     case KEY_space:
     case KEY_KP_Space:
-      handle(this,MKUINT(ID_POST,SEL_COMMAND),ptr);
+      handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
       return 1;
     }
   return 0;
@@ -186,7 +188,6 @@ long FXMenuCascade::onKeyRelease(FXObject*,FXSelector sel,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(!isEnabled()) return 0;
   FXTRACE((200,"%s::onKeyRelease %p keysym=0x%04x state=%04x\n",getClassName(),this,event->code,event->state));
-  //if(target && target->handle(this,MKUINT(message,SEL_KEYRELEASE),ptr)) return 1;
   if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
   switch(event->code){
     case KEY_Right:
@@ -205,9 +206,9 @@ long FXMenuCascade::onKeyRelease(FXObject*,FXSelector sel,void* ptr){
 // Hot key combination pressed
 long FXMenuCascade::onHotKeyPress(FXObject*,FXSelector,void* ptr){
   FXTRACE((200,"%s::onHotKeyPress %p\n",getClassName(),this));
-  handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   if(isEnabled()){
-    handle(this,MKUINT(ID_POST,SEL_COMMAND),ptr);
+    handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
     }
   return 1;
   }
@@ -222,9 +223,9 @@ long FXMenuCascade::onHotKeyRelease(FXObject*,FXSelector,void*){
 
 // Post the menu
 long FXMenuCascade::onCmdPost(FXObject*,FXSelector,void*){
-  if(timer){ getApp()->removeTimeout(timer); timer=NULL; }
+  FXint x,y;
+  getApp()->removeTimeout(this,ID_MENUTIMER);
   if(pane && !pane->shown()){
-    FXint x,y;
     translateCoordinatesTo(x,y,getRoot(),width,0);
     pane->popup(((FXMenuPane*)getParent())->getGrabOwner(),x,y);
     }
@@ -234,7 +235,7 @@ long FXMenuCascade::onCmdPost(FXObject*,FXSelector,void*){
 
 // Unpost the menu
 long FXMenuCascade::onCmdUnpost(FXObject*,FXSelector,void*){
-  if(timer){ getApp()->removeTimeout(timer); timer=NULL; }
+  getApp()->removeTimeout(this,ID_MENUTIMER);
   if(pane && pane->shown()){
     pane->popdown();
     }
@@ -254,7 +255,7 @@ void FXMenuCascade::setFocus(){
 // Out of focus chain; hide submenu if it was up
 void FXMenuCascade::killFocus(){
   FXMenuCaption::killFocus();
-  handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
+  handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
   flags&=~FLAG_ACTIVE;
   flags|=FLAG_UPDATE;
   update();
@@ -265,7 +266,7 @@ void FXMenuCascade::killFocus(){
 long FXMenuCascade::onEnter(FXObject* sender,FXSelector sel,void* ptr){
   FXMenuCaption::onEnter(sender,sel,ptr);
   if(isEnabled() && canFocus()){
-    if(!timer){ timer=getApp()->addTimeout(getApp()->getMenuPause(),this,ID_MENUTIMER); }
+    getApp()->addTimeout(this,ID_MENUTIMER,getApp()->getMenuPause());
     setFocus();
     }
   return 1;
@@ -275,15 +276,7 @@ long FXMenuCascade::onEnter(FXObject* sender,FXSelector sel,void* ptr){
 // Leave
 long FXMenuCascade::onLeave(FXObject* sender,FXSelector sel,void* ptr){
   FXMenuCaption::onLeave(sender,sel,ptr);
-  if(timer){ getApp()->removeTimeout(timer); timer=NULL; }
-  return 1;
-  }
-
-
-// Timeout; pop up the submenu
-long FXMenuCascade::onTimeout(FXObject*,FXSelector,void* ptr){
-  timer=NULL;
-  handle(this,MKUINT(ID_POST,SEL_COMMAND),ptr);
+  getApp()->removeTimeout(this,ID_MENUTIMER);
   return 1;
   }
 
@@ -306,7 +299,7 @@ long FXMenuCascade::onPaint(FXObject*,FXSelector,void* ptr){
       }
     if(!label.empty()){
       yy=font->getFontAscent()+(height-font->getFontHeight())/2;
-      dc.setTextFont(font);
+      dc.setFont(font);
       dc.setForeground(hiliteColor);
       dc.drawText(xx+1,yy+1,label.text(),label.length());
       dc.setForeground(shadowColor);
@@ -323,14 +316,14 @@ long FXMenuCascade::onPaint(FXObject*,FXSelector,void* ptr){
   // Active
   else if(isActive()){
     dc.setForeground(selbackColor);
-    dc.fillRectangle(1,1,width-2,height-2);
+    dc.fillRectangle(0,0,width,height);
     if(icon){
       dc.drawIcon(icon,3,(height-icon->getHeight())/2);
       if(icon->getWidth()+5>xx) xx=icon->getWidth()+5;
       }
     if(!label.empty()){
       yy=font->getFontAscent()+(height-font->getFontHeight())/2;
-      dc.setTextFont(font);
+      dc.setFont(font);
       dc.setForeground(isEnabled() ? seltextColor : shadowColor);
       dc.drawText(xx,yy,label.text(),label.length());
       if(0<=hotoff){
@@ -352,7 +345,7 @@ long FXMenuCascade::onPaint(FXObject*,FXSelector,void* ptr){
       }
     if(!label.empty()){
       yy=font->getFontAscent()+(height-font->getFontHeight())/2;
-      dc.setTextFont(font);
+      dc.setFont(font);
       dc.setForeground(textColor);
       dc.drawText(xx,yy,label.text(),label.length());
       if(0<=hotoff){
@@ -368,14 +361,14 @@ long FXMenuCascade::onPaint(FXObject*,FXSelector,void* ptr){
 
 
 // Draw triangle
-void FXMenuCascade::drawTriangle(FXDCWindow& dc,FXint l,FXint t,FXint r,FXint b){
+void FXMenuCascade::drawTriangle(FXDCWindow& dc,FXint l,FXint t,FXint,FXint b){
   FXPoint points[3];
   int m=(t+b)/2;
   points[0].x=l;
   points[0].y=t;
   points[1].x=l;
   points[1].y=b;
-  points[2].x=r;
+  points[2].x=l+(b-t)/2;
   points[2].y=m;
   dc.fillPolygon(points,3);
   }
@@ -409,8 +402,8 @@ void FXMenuCascade::load(FXStream& store){
 
 // Delete it
 FXMenuCascade::~FXMenuCascade(){
-  if(timer) getApp()->removeTimeout(timer);
-  pane=(FXMenuPane*)-1;
-  timer=(FXTimer*)-1;
+  getApp()->removeTimeout(this,ID_MENUTIMER);
+  pane=(FXMenuPane*)-1L;
   }
 
+}

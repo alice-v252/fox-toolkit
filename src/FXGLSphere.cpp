@@ -3,7 +3,7 @@
 *                      O p e n G L   S p h e r e   O b j e c t                  *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * Contributed by: Angel-Ventura Mendo Gomez <ventura@labri.u-bordeaux.fr>       *
 *********************************************************************************
@@ -21,17 +21,20 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXGLSphere.cpp,v 1.11 2002/01/18 22:43:00 jeroen Exp $                   *
+* $Id: FXGLSphere.cpp,v 1.23 2005/01/16 16:06:07 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
-#include "FXVec.h"
-#include "FXHVec.h"
-#include "FXQuat.h"
-#include "FXHMat.h"
-#include "FXRange.h"
+#include "FXVec2f.h"
+#include "FXVec3f.h"
+#include "FXVec4f.h"
+#include "FXQuatf.h"
+#include "FXMat4f.h"
+#include "FXRangef.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
@@ -54,8 +57,11 @@
 #define SPHERE_SLICES  20
 #define SPHERE_STACKS  20
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
 
 // Object implementation
 FXIMPLEMENT(FXGLSphere,FXGLShape,NULL,0)
@@ -64,9 +70,9 @@ FXIMPLEMENT(FXGLSphere,FXGLShape,NULL,0)
 // Create sphere
 FXGLSphere::FXGLSphere(void):radius(0.5f),slices(SPHERE_SLICES),stacks(SPHERE_STACKS){
   FXTRACE((100,"FXGLSphere::FXGLSphere\n"));
-  range[0][0]=-radius; range[0][1]=radius;
-  range[1][0]=-radius; range[1][1]=radius;
-  range[2][0]=-radius; range[2][1]=radius;
+  range.lower.x=-radius; range.upper.x=radius;
+  range.lower.y=-radius; range.upper.y=radius;
+  range.lower.z=-radius; range.upper.z=radius;
   }
 
 
@@ -74,9 +80,9 @@ FXGLSphere::FXGLSphere(void):radius(0.5f),slices(SPHERE_SLICES),stacks(SPHERE_ST
 FXGLSphere::FXGLSphere(FXfloat x,FXfloat y,FXfloat z,FXfloat r):
   FXGLShape(x,y,z,SHADING_SMOOTH|STYLE_SURFACE),radius(r),slices(SPHERE_SLICES),stacks(SPHERE_STACKS){
   FXTRACE((100,"FXGLSphere::FXGLSphere\n"));
-  range[0][0]=-radius; range[0][1]=radius;
-  range[1][0]=-radius; range[1][1]=radius;
-  range[2][0]=-radius; range[2][1]=radius;
+  range.lower.x=-radius; range.upper.x=radius;
+  range.lower.y=-radius; range.upper.y=radius;
+  range.lower.z=-radius; range.upper.z=radius;
   }
 
 
@@ -84,9 +90,9 @@ FXGLSphere::FXGLSphere(FXfloat x,FXfloat y,FXfloat z,FXfloat r):
 FXGLSphere::FXGLSphere(FXfloat x,FXfloat y,FXfloat z,FXfloat r,const FXMaterial& mtl):
   FXGLShape(x,y,z,SHADING_SMOOTH|STYLE_SURFACE,mtl,mtl),radius(r),slices(SPHERE_SLICES),stacks(SPHERE_STACKS){
   FXTRACE((100,"FXGLSphere::FXGLSphere\n"));
-  range[0][0]=-radius; range[0][1]=radius;
-  range[1][0]=-radius; range[1][1]=radius;
-  range[2][0]=-radius; range[2][1]=radius;
+  range.lower.x=-radius; range.upper.x=radius;
+  range.lower.y=-radius; range.upper.y=radius;
+  range.lower.z=-radius; range.upper.z=radius;
   }
 
 
@@ -101,7 +107,7 @@ FXGLSphere::FXGLSphere(const FXGLSphere& orig):FXGLShape(orig){
 
 // Draw
 void FXGLSphere::drawshape(FXGLViewer*){
-#ifdef HAVE_OPENGL
+#ifdef HAVE_GL_H
   GLUquadricObj* quad=gluNewQuadric();
   gluQuadricDrawStyle(quad,(GLenum)GLU_FILL);
   /*
@@ -144,3 +150,5 @@ void FXGLSphere::load(FXStream& store){
 FXGLSphere::~FXGLSphere(){
   FXTRACE((100,"FXGLSphere::~FXGLSphere\n"));
   }
+
+}

@@ -3,7 +3,7 @@
 *                       T r e e  L i s t  B o x  O b j e c t                    *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXTreeListBox.cpp,v 1.23 2002/02/11 06:37:27 fox Exp $                   *
+* $Id: FXTreeListBox.cpp,v 1.52 2005/02/06 17:20:00 fox Exp $                   *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -41,7 +43,7 @@
 #include "FXButton.h"
 #include "FXMenuButton.h"
 #include "FXPopup.h"
-#include "FXScrollbar.h"
+#include "FXScrollBar.h"
 #include "FXTreeList.h"
 #include "FXTreeListBox.h"
 
@@ -63,21 +65,24 @@
   - Perhaps use TWO tree lists, one in the pane, and one in the box;
     we can then rest assured that the metrics are always computed properly.
   - Still need some code to make sure always one item shows in box.
+  - No reaction to up and down arrow while disabled.
 */
 
 #define TREELISTBOX_MASK       (0)
 
+using namespace FX;
 
 
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXTreeListBox) FXTreeListBoxMap[]={
   FXMAPFUNC(SEL_FOCUS_UP,0,FXTreeListBox::onFocusUp),
   FXMAPFUNC(SEL_FOCUS_DOWN,0,FXTreeListBox::onFocusDown),
-  FXMAPFUNC(SEL_CHANGED,0,FXTreeListBox::onChanged),
-  FXMAPFUNC(SEL_COMMAND,0,FXTreeListBox::onCommand),
-  FXMAPFUNC(SEL_UPDATE,FXTreeListBox::ID_TREE,FXTreeListBox::onUpdFmTree),
+  FXMAPFUNC(SEL_FOCUS_SELF,0,FXTreeListBox::onFocusSelf),
+  FXMAPFUNC(SEL_UPDATE,FXTreeListBox::ID_TREE,FXTreeListBox::onTreeUpdate),
   FXMAPFUNC(SEL_CHANGED,FXTreeListBox::ID_TREE,FXTreeListBox::onTreeChanged),
   FXMAPFUNC(SEL_CLICKED,FXTreeListBox::ID_TREE,FXTreeListBox::onTreeClicked),
   FXMAPFUNC(SEL_LEFTBUTTONPRESS,FXTreeListBox::ID_FIELD,FXTreeListBox::onFieldButton),
@@ -89,7 +94,7 @@ FXIMPLEMENT(FXTreeListBox,FXPacker,FXTreeListBoxMap,ARRAYNUMBER(FXTreeListBoxMap
 
 
 // List box
-FXTreeListBox::FXTreeListBox(FXComposite *p,FXint nvis,FXObject* tgt,FXSelector sel,FXuint opts,FXint x,FXint y,FXint w,FXint h,FXint pl,FXint pr,FXint pt,FXint pb):
+FXTreeListBox::FXTreeListBox(FXComposite *p,FXObject* tgt,FXSelector sel,FXuint opts,FXint x,FXint y,FXint w,FXint h,FXint pl,FXint pr,FXint pt,FXint pb):
   FXPacker(p,opts,x,y,w,h, 0,0,0,0, 0,0){
   flags|=FLAG_ENABLED;
   target=tgt;
@@ -97,7 +102,7 @@ FXTreeListBox::FXTreeListBox(FXComposite *p,FXint nvis,FXObject* tgt,FXSelector 
   field=new FXButton(this," ",NULL,this,FXTreeListBox::ID_FIELD,ICON_BEFORE_TEXT|JUSTIFY_LEFT, 0,0,0,0, pl,pr,pt,pb);
   field->setBackColor(getApp()->getBackColor());
   pane=new FXPopup(this,FRAME_LINE);
-  tree=new FXTreeList(pane,nvis,this,FXTreeListBox::ID_TREE,TREELIST_BROWSESELECT|TREELIST_AUTOSELECT|LAYOUT_FILL_X|LAYOUT_FILL_Y|SCROLLERS_TRACK|HSCROLLING_OFF);
+  tree=new FXTreeList(pane,this,FXTreeListBox::ID_TREE,TREELIST_BROWSESELECT|TREELIST_AUTOSELECT|LAYOUT_FILL_X|LAYOUT_FILL_Y|SCROLLERS_TRACK|HSCROLLING_OFF);
   tree->setIndent(0);
   button=new FXMenuButton(this,NULL,NULL,pane,FRAME_RAISED|FRAME_THICK|MENUBUTTON_DOWN|MENUBUTTON_ATTACH_RIGHT, 0,0,0,0, 0,0,0,0);
   button->setXOffset(border);
@@ -128,7 +133,7 @@ void FXTreeListBox::destroy(){
 
 // Enable the window
 void FXTreeListBox::enable(){
-  if(!(flags&FLAG_ENABLED)){
+  if(!isEnabled()){
     FXPacker::enable();
     field->setBackColor(getApp()->getBackColor());
     field->enable();
@@ -139,7 +144,7 @@ void FXTreeListBox::enable(){
 
 // Disable the window
 void FXTreeListBox::disable(){
-  if(flags&FLAG_ENABLED){
+  if(isEnabled()){
     FXPacker::disable();
     field->setBackColor(getApp()->getBaseColor());
     field->disable();
@@ -179,84 +184,80 @@ void FXTreeListBox::layout(){
   }
 
 
-// Forward GUI update of tree to target; but only if pane is not popped
-long FXTreeListBox::onUpdFmTree(FXObject*,FXSelector,void*){
-  return target && !isPaneShown() && target->handle(this,MKUINT(message,SEL_UPDATE),NULL);
-  }
-
-
-// Changed
-long FXTreeListBox::onChanged(FXObject*,FXSelector,void* ptr){
-  if(target) target->handle(this,MKUINT(message,SEL_CHANGED),ptr);
-  return 1;
-  }
-
-
-// Command
-long FXTreeListBox::onCommand(FXObject*,FXSelector,void* ptr){
-  if(target) target->handle(this,MKUINT(message,SEL_COMMAND),ptr);
+// Forward clicked message from list to target
+long FXTreeListBox::onTreeClicked(FXObject*,FXSelector,void* ptr){
+  button->handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);    // Unpost the list
+  if(ptr){
+    field->setText(tree->getItemText((FXTreeItem*)ptr));
+    field->setIcon(tree->getItemClosedIcon((FXTreeItem*)ptr));
+    if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),ptr);
+    }
   return 1;
   }
 
 
 // Forward changed message from list to target
 long FXTreeListBox::onTreeChanged(FXObject*,FXSelector,void* ptr){
-  handle(this,MKUINT(0,SEL_CHANGED),ptr);
-  return 1;
+  return target && target->tryHandle(this,FXSEL(SEL_CHANGED,message),ptr);
   }
 
 
-// Forward clicked message from list to target
-long FXTreeListBox::onTreeClicked(FXObject*,FXSelector,void* ptr){
-  FXTreeItem *item=(FXTreeItem*)ptr;
-  button->handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);    // Unpost the list
-  if(item){
-    field->setText(tree->getItemText(item));
-    field->setIcon(tree->getItemClosedIcon(item));
-    handle(this,MKUINT(0,SEL_COMMAND),(void*)item);
-    }
-  return 1;
+// Forward GUI update of tree to target; but only if pane is not popped
+long FXTreeListBox::onTreeUpdate(FXObject*,FXSelector,void*){
+  return target && !isPaneShown() && target->tryHandle(this,FXSEL(SEL_UPDATE,message),NULL);
   }
 
 
 // Pressed left button in text field
 long FXTreeListBox::onFieldButton(FXObject*,FXSelector,void*){
-  button->handle(this,MKUINT(ID_POST,SEL_COMMAND),NULL);      // Post the list
+  button->handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);      // Post the list
   return 1;
+  }
+
+
+// Bounce focus to the field
+long FXTreeListBox::onFocusSelf(FXObject* sender,FXSelector,void* ptr){
+  return field->handle(sender,FXSEL(SEL_FOCUS_SELF,0),ptr);
   }
 
 
 // Select upper item
 long FXTreeListBox::onFocusUp(FXObject*,FXSelector,void*){
-  FXTreeItem *item=getCurrentItem();
-  if(!item){
-    for(item=getLastItem(); item->getLast(); item=item->getLast());
+  if(isEnabled()){
+    FXTreeItem *item=getCurrentItem();
+    if(!item){
+      for(item=getLastItem(); item->getLast(); item=item->getLast());
+      }
+    else if(item->getAbove()){
+      item=item->getAbove();
+      }
+    if(item){
+      setCurrentItem(item);
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)item);
+      }
+    return 1;
     }
-  else if(item->getAbove()){
-    item=item->getAbove();
-    }
-  if(item){
-    setCurrentItem(item);
-    handle(this,MKUINT(0,SEL_COMMAND),(void*)item);
-    }
-  return 1;
+  return 0;
   }
 
 
 // Select lower item
 long FXTreeListBox::onFocusDown(FXObject*,FXSelector,void*){
-  FXTreeItem *item=getCurrentItem();
-  if(!item){
-    item=getFirstItem();
+  if(isEnabled()){
+    FXTreeItem *item=getCurrentItem();
+    if(!item){
+      item=getFirstItem();
+      }
+    else if(item->getBelow()){
+      item=item->getBelow();
+      }
+    if(item){
+      setCurrentItem(item);
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)item);
+      }
+    return 1;
     }
-  else if(item->getBelow()){
-    item=item->getBelow();
-    }
-  if(item){
-    setCurrentItem(item);
-    handle(this,MKUINT(0,SEL_COMMAND),(void*)item);
-    }
-  return 1;
+  return 0;
   }
 
 
@@ -312,69 +313,127 @@ FXTreeItem* FXTreeListBox::getLastItem() const {
   }
 
 
-// Add item as first
-FXTreeItem* FXTreeListBox::addItemFirst(FXTreeItem* p,FXTreeItem* item){
+// Fill tree list box by appending items from array of strings
+FXint FXTreeListBox::fillItems(FXTreeItem* father,const FXchar** strings,FXIcon* oi,FXIcon* ci,void* ptr){
+  register FXTreeItem* currentitem=tree->getCurrentItem();
+  register FXint n=tree->fillItems(father,strings,oi,ci,ptr);
+  if(currentitem!=tree->getCurrentItem()){
+    field->setIcon(tree->getItemClosedIcon(tree->getCurrentItem()));
+    field->setText(tree->getItemText(tree->getCurrentItem()));
+    }
   recalc();
-  return tree->addItemFirst(p,item);
+  return n;
   }
 
 
-// Add item as last
-FXTreeItem* FXTreeListBox::addItemLast(FXTreeItem* p,FXTreeItem* item){
+// Fill tree list box by appending items from newline separated strings
+FXint FXTreeListBox::fillItems(FXTreeItem* father,const FXString& strings,FXIcon* oi,FXIcon* ci,void* ptr){
+  register FXTreeItem* currentitem=tree->getCurrentItem();
+  register FXint n=tree->fillItems(father,strings,oi,ci,ptr);
+  if(currentitem!=tree->getCurrentItem()){
+    field->setIcon(tree->getItemClosedIcon(tree->getCurrentItem()));
+    field->setText(tree->getItemText(tree->getCurrentItem()));
+    }
   recalc();
-  return tree->addItemLast(p,item);
+  return n;
   }
 
 
-// Add item after another
-FXTreeItem* FXTreeListBox::addItemAfter(FXTreeItem* other,FXTreeItem* item){
+// Insert item under father before other item
+FXTreeItem* FXTreeListBox::insertItem(FXTreeItem* other,FXTreeItem* father,FXTreeItem* item){
+  register FXTreeItem *newitem=tree->insertItem(other,father,item);
+  if(tree->getCurrentItem()==newitem){
+    field->setIcon(tree->getItemClosedIcon(newitem));
+    field->setText(tree->getItemText(newitem));
+    }
   recalc();
-  return tree->addItemAfter(other,item);
+  return newitem;
   }
 
 
-// Add item before another
-FXTreeItem* FXTreeListBox::addItemBefore(FXTreeItem* other,FXTreeItem* item){
+// Insert item with given text and optional icons, and user-data pointer under father before other item
+FXTreeItem* FXTreeListBox::insertItem(FXTreeItem* other,FXTreeItem* father,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr){
+  register FXTreeItem *newitem=tree->insertItem(other,father,text,oi,ci,ptr);
+  if(tree->getCurrentItem()==newitem){
+    field->setIcon(tree->getItemClosedIcon(newitem));
+    field->setText(tree->getItemText(newitem));
+    }
   recalc();
-  return tree->addItemBefore(other,item);
+  return newitem;
   }
 
 
-// Add item as first
-FXTreeItem* FXTreeListBox::addItemFirst(FXTreeItem* p,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr){
-  FXTreeItem *item=tree->addItemFirst(p,text,oi,ci,ptr);
+// Append item as last child of father
+FXTreeItem* FXTreeListBox::appendItem(FXTreeItem* father,FXTreeItem* item){
+  register FXTreeItem *newitem=tree->appendItem(father,item);
+  if(tree->getCurrentItem()==newitem){
+    field->setIcon(tree->getItemClosedIcon(newitem));
+    field->setText(tree->getItemText(newitem));
+    }
   recalc();
-  return item;
+  return newitem;
   }
 
 
-// Add item as last
-FXTreeItem* FXTreeListBox::addItemLast(FXTreeItem* p,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr){
-  FXTreeItem *item=tree->addItemLast(p,text,oi,ci,ptr);
+// Append item with given text and optional icons, and user-data pointer as last child of father
+FXTreeItem* FXTreeListBox::appendItem(FXTreeItem* father,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr){
+  register FXTreeItem *newitem=tree->appendItem(father,text,oi,ci,ptr);
+  if(tree->getCurrentItem()==newitem){
+    field->setIcon(tree->getItemClosedIcon(newitem));
+    field->setText(tree->getItemText(newitem));
+    }
   recalc();
-  return item;
+  return newitem;
   }
 
 
-// Add item after another
-FXTreeItem* FXTreeListBox::addItemAfter(FXTreeItem* other,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr){
-  FXTreeItem *item=tree->addItemAfter(other,text,oi,ci,ptr);
+// Prepend item as first child of father
+FXTreeItem* FXTreeListBox::prependItem(FXTreeItem* father,FXTreeItem* item){
+  register FXTreeItem *newitem=tree->prependItem(father,item);
+  if(tree->getCurrentItem()==newitem){
+    field->setIcon(tree->getItemClosedIcon(newitem));
+    field->setText(tree->getItemText(newitem));
+    }
   recalc();
-  return item;
+  return newitem;
   }
 
 
-// Add item before another
-FXTreeItem* FXTreeListBox::addItemBefore(FXTreeItem* other,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr){
-  FXTreeItem *item=tree->addItemBefore(other,text,oi,ci,ptr);
+// Prepend item with given text and optional icons, and user-data pointer as first child of father
+FXTreeItem* FXTreeListBox::prependItem(FXTreeItem* father,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr){
+  register FXTreeItem *newitem=tree->prependItem(father,text,oi,ci,ptr);
+  if(tree->getCurrentItem()==newitem){
+    field->setIcon(tree->getItemClosedIcon(newitem));
+    field->setText(tree->getItemText(newitem));
+    }
   recalc();
-  return item;
+  return newitem;
+  }
+
+
+// Move item under father before other item
+FXTreeItem *FXTreeListBox::moveItem(FXTreeItem* other,FXTreeItem* father,FXTreeItem* item){
+  register FXTreeItem *newitem=tree->moveItem(other,father,item);
+  recalc();
+  return newitem;
   }
 
 
 // Remove given item
 void FXTreeListBox::removeItem(FXTreeItem* item){
+  register FXTreeItem *currentitem=tree->getCurrentItem();
   tree->removeItem(item);
+  if(item==currentitem){
+    currentitem=tree->getCurrentItem();
+    if(currentitem){
+      field->setIcon(tree->getItemClosedIcon(currentitem));
+      field->setText(tree->getItemText(currentitem));
+      }
+    else{
+      field->setIcon(NULL);
+      field->setText(" ");
+      }
+    }
   recalc();
   }
 
@@ -393,10 +452,15 @@ void FXTreeListBox::clearItems(){
   }
 
 
-
 // Get item by name
-FXTreeItem* FXTreeListBox::findItem(const FXString& text,FXTreeItem* start,FXuint flags) const {
-  return tree->findItem(text,start,flags);
+FXTreeItem* FXTreeListBox::findItem(const FXString& text,FXTreeItem* start,FXuint flgs) const {
+  return tree->findItem(text,start,flgs);
+  }
+
+
+// Get item by data
+FXTreeItem* FXTreeListBox::findItemByData(const void *ptr,FXTreeItem* start,FXuint flgs) const {
+  return tree->findItemByData(ptr,start,flgs);
   }
 
 
@@ -412,6 +476,12 @@ FXbool FXTreeListBox::isItemLeaf(const FXTreeItem* item) const {
   }
 
 
+// Sort all items recursively
+void FXTreeListBox::sortItems(){
+  tree->sortItems();
+  }
+
+
 // Sort item child list
 void FXTreeListBox::sortChildItems(FXTreeItem* item){
   tree->sortChildItems(item);
@@ -419,14 +489,15 @@ void FXTreeListBox::sortChildItems(FXTreeItem* item){
 
 
 // Sort item list
-void FXTreeListBox::sortItems(){
-  tree->sortItems();
+void FXTreeListBox::sortRootItems(){
+  tree->sortRootItems();
   }
 
 
 // Change current item
 void FXTreeListBox::setCurrentItem(FXTreeItem* item,FXbool notify){
   tree->setCurrentItem(item,notify);
+  tree->makeItemVisible(item);
   if(item){
     field->setIcon(tree->getItemClosedIcon(item));
     field->setText(tree->getItemText(item));
@@ -459,24 +530,30 @@ FXString FXTreeListBox::getItemText(const FXTreeItem* item) const {
   return tree->getItemText(item);
   }
 
-void FXTreeListBox::setItemOpenIcon(FXTreeItem* item,FXIcon* icon){
-  tree->setItemOpenIcon(item,icon);
+
+// Change open icon
+void FXTreeListBox::setItemOpenIcon(FXTreeItem* item,FXIcon* icon,FXbool owned){
+  tree->setItemOpenIcon(item,icon,owned);
   }
 
 
+// Get open icon
 FXIcon* FXTreeListBox::getItemOpenIcon(const FXTreeItem* item) const {
   return tree->getItemOpenIcon(item);
   }
 
 
-void FXTreeListBox::setItemClosedIcon(FXTreeItem* item,FXIcon* icon){
-  tree->setItemClosedIcon(item,icon);
+// Set closed icon
+void FXTreeListBox::setItemClosedIcon(FXTreeItem* item,FXIcon* icon,FXbool owned){
+  tree->setItemClosedIcon(item,icon,owned);
   }
 
 
+// Get closed icon
 FXIcon* FXTreeListBox::getItemClosedIcon(const FXTreeItem* item) const{
   return tree->getItemClosedIcon(item);
   }
+
 
 // Set item data
 void FXTreeListBox::setItemData(FXTreeItem* item,void* ptr) const {
@@ -527,7 +604,7 @@ void FXTreeListBox::setHelpText(const FXString& txt){
 
 
 // Get help text
-FXString FXTreeListBox::getHelpText() const {
+const FXString& FXTreeListBox::getHelpText() const {
   return field->getHelpText();
   }
 
@@ -539,7 +616,7 @@ void FXTreeListBox::setTipText(const FXString& txt){
 
 
 // Get tip text
-FXString FXTreeListBox::getTipText() const {
+const FXString& FXTreeListBox::getTipText() const {
   return field->getTipText();
   }
 
@@ -567,9 +644,10 @@ void FXTreeListBox::load(FXStream& store){
 // Delete it
 FXTreeListBox::~FXTreeListBox(){
   delete pane;
-  pane=(FXPopup*)-1;
-  field=(FXButton*)-1;
-  button=(FXMenuButton*)-1;
-  tree=(FXTreeList*)-1;
+  pane=(FXPopup*)-1L;
+  field=(FXButton*)-1L;
+  button=(FXMenuButton*)-1L;
+  tree=(FXTreeList*)-1L;
   }
 
+}

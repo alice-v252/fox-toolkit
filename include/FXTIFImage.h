@@ -3,7 +3,7 @@
 *                          T I F F   I m a g e   O b j e c t                    *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2001,2002 Eric Gillet.   All Rights Reserved.                   *
+* Copyright (C) 2001,2005 Eric Gillet.   All Rights Reserved.                   *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXTIFImage.h,v 1.7 2002/01/18 22:55:03 jeroen Exp $                      *
+* $Id: FXTIFImage.h,v 1.20 2005/01/16 16:06:06 fox Exp $                        *
 ********************************************************************************/
 #ifndef FXTIFIMAGE_H
 #define FXTIFIMAGE_H
@@ -27,6 +27,8 @@
 #ifndef FXIMAGE_H
 #include "FXImage.h"
 #endif
+
+namespace FX {
 
 
 /// TIFF Image class
@@ -40,6 +42,8 @@ private:
   FXTIFImage(const FXTIFImage&);
   FXTIFImage &operator=(const FXTIFImage&);
 public:
+  static const FXchar fileExt[];
+public:
 
   /// Construct an image from memory stream formatted in TIFF format
   FXTIFImage(FXApp *a,const void *pix=NULL,FXuint opts=0,FXint w=1,FXint h=1);
@@ -50,23 +54,39 @@ public:
   /// Get codec setting
   FXuint getCodec() const { return codec; }
 
-  /// Save pixels into stream in TIFF format
-  virtual void loadPixels(FXStream& store);
+  /// Load pixels into stream in TIFF format
+  virtual FXbool loadPixels(FXStream& store);
 
-  /// Load pixels from stream in TIFF format
-  virtual void savePixels(FXStream& store) const;
+  /// Save pixels from stream in TIFF format
+  virtual FXbool savePixels(FXStream& store) const;
+
+  /// True if format is supported
+  static const FXbool supported;
 
   /// Destroy
   virtual ~FXTIFImage();
   };
 
 
-/// Load a tiff from a stream
-extern FXAPI FXbool fxloadTIF(FXStream& store,FXuchar*& data,FXColor& transp,FXint& width,FXint& height,FXushort& codec);
+/**
+* Check if stream contains a TIFF, return TRUE if so.
+*/
+extern FXAPI FXbool fxcheckTIF(FXStream& store);
 
 
-/// Save a tiff to a stream
-extern FXAPI FXbool fxsaveTIF(FXStream& store,const FXuchar* data,FXColor transp,FXint width,FXint height,FXushort codec);
+/**
+* Load an TIFF (Tagged Image File Format) file from a stream.
+* Upon successful return, the pixel array and size are returned.
+* If an error occurred, the pixel array is set to NULL.
+*/
+extern FXAPI FXbool fxloadTIF(FXStream& store,FXColor*& data,FXint& width,FXint& height,FXushort& codec);
 
+
+/**
+* Save an TIFF (Tagged Image File Format) file to a stream.
+*/
+extern FXAPI FXbool fxsaveTIF(FXStream& store,const FXColor* data,FXint width,FXint height,FXushort codec);
+
+}
 
 #endif

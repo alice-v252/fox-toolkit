@@ -3,7 +3,7 @@
 *                       F r a m e   W i n d o w   W i d g e t                   *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXFrame.h,v 1.13 2002/01/18 22:42:53 jeroen Exp $                        *
+* $Id: FXFrame.h,v 1.23 2005/02/03 20:12:46 fox Exp $                           *
 ********************************************************************************/
 #ifndef FXFRAME_H
 #define FXFRAME_H
@@ -28,25 +28,48 @@
 #include "FXWindow.h"
 #endif
 
+namespace FX {
 
 
-// Default padding
-#define DEFAULT_PAD   2
+/// Justification modes used by certain subclasses
+enum {
+  JUSTIFY_NORMAL       = 0,			      /// Default justification is centered text
+  JUSTIFY_CENTER_X     = 0,			      /// Contents centered horizontally
+  JUSTIFY_LEFT         = 0x00008000,		      /// Contents left-justified
+  JUSTIFY_RIGHT        = 0x00010000,		      /// Contents right-justified
+  JUSTIFY_HZ_APART     = JUSTIFY_LEFT|JUSTIFY_RIGHT,  /// Combination of JUSTIFY_LEFT & JUSTIFY_RIGHT
+  JUSTIFY_CENTER_Y     = 0,			      /// Contents centered vertically
+  JUSTIFY_TOP          = 0x00020000,		      /// Contents aligned with label top
+  JUSTIFY_BOTTOM       = 0x00040000,		      /// Contents aligned with label bottom
+  JUSTIFY_VT_APART     = JUSTIFY_TOP|JUSTIFY_BOTTOM   /// Combination of JUSTIFY_TOP & JUSTIFY_BOTTOM
+  };
 
 
-/// Base Frame
+/// Default padding
+enum { DEFAULT_PAD = 2 };
+
+
+/**
+* The Frame widget provides borders around some contents. Borders may be raised, sunken,
+* thick, ridged or etched.  They can also be turned off completely.
+* In addition, a certain amount of padding may be specified between the contents of
+* the widget and the borders.  The contents may be justified inside the widget using the
+* justification options.
+* The Frame widget is sometimes used by itself as a place holder, but most often is used
+* as a convenient base class for simple controls.
+*/
 class FXAPI FXFrame : public FXWindow {
   FXDECLARE(FXFrame)
 protected:
-  FXColor baseColor;
-  FXColor hiliteColor;
-  FXColor shadowColor;
-  FXColor borderColor;
-  FXint   padtop;
-  FXint   padbottom;
-  FXint   padleft;
-  FXint   padright;
-  FXint   border;
+  FXColor baseColor;    // Base color
+  FXColor hiliteColor;  // Highlight color
+  FXColor shadowColor;  // Shadow color
+  FXColor borderColor;  // Border color
+  FXint   padtop;       // Top padding
+  FXint   padbottom;    // Bottom padding
+  FXint   padleft;      // Left padding
+  FXint   padright;     // right padding
+  FXint   border;       // Border size
 protected:
   FXFrame();
   void drawBorderRectangle(FXDCWindow& dc,FXint x,FXint y,FXint w,FXint h);
@@ -135,11 +158,8 @@ public:
 
   /// Load from stream
   virtual void load(FXStream& store);
-
-  /// Destructor
-  virtual ~FXFrame();
   };
 
-
+}
 
 #endif

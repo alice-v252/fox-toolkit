@@ -3,7 +3,7 @@
 *                          T I F F  I c o n   O b j e c t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2001,2002 Eric Gillet.   All Rights Reserved.                   *
+* Copyright (C) 2001,2005 Eric Gillet.   All Rights Reserved.                   *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,15 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXTIFIcon.cpp,v 1.6 2002/01/18 22:55:04 jeroen Exp $                     *
+* $Id: FXTIFIcon.cpp,v 1.24 2005/01/16 16:06:07 fox Exp $                       *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
+#include "FXMemoryStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
@@ -39,19 +42,33 @@
   - FXTIFIcon has an alpha channel.
 */
 
+using namespace FX;
 
 /*******************************************************************************/
 
+namespace FX {
+
+
+// Suggested file extension
+const FXchar FXTIFIcon::fileExt[]="tif";
+
+
+// Object implementation
 FXIMPLEMENT(FXTIFIcon,FXIcon,NULL,0)
 
 
+#ifdef HAVE_TIFF_H
+const FXbool FXTIFIcon::supported=TRUE;
+#else
+const FXbool FXTIFIcon::supported=FALSE;
+#endif
+
+
 // Initialize
-FXTIFIcon::FXTIFIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FXint h):
-  FXIcon(a,NULL,clr,opts|IMAGE_ALPHA,w,h){
-  codec=0;
+FXTIFIcon::FXTIFIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FXint h):FXIcon(a,NULL,clr,opts,w,h),codec(0){
   if(pix){
     FXMemoryStream ms;
-    ms.open((FXuchar *)pix,FXStreamLoad);
+    ms.open(FXStreamLoad,(FXuchar*)pix);
     loadPixels(ms);
     ms.close();
     }
@@ -59,24 +76,28 @@ FXTIFIcon::FXTIFIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FX
 
 
 // Save pixels only
-void FXTIFIcon::savePixels(FXStream& store) const {
-  FXASSERT(options&IMAGE_ALPHA);
-  fxsaveTIF(store,data,transp,width,height,codec);
+FXbool FXTIFIcon::savePixels(FXStream& store) const {
+  if(fxsaveTIF(store,data,width,height,codec)){
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
 // Load pixels only
-void FXTIFIcon::loadPixels(FXStream& store){
-  FXColor clearcolor=0;
-  if(options&IMAGE_OWNED){FXFREE(&data);}
-  fxloadTIF(store,data,clearcolor,width,height,codec);
-  if(!(options&IMAGE_ALPHACOLOR)) transp=clearcolor;
-  if(options&IMAGE_ALPHAGUESS) transp=guesstransp();
-  options|=IMAGE_ALPHA;
-  options|=IMAGE_OWNED;
+FXbool FXTIFIcon::loadPixels(FXStream& store){
+  FXColor *pixels; FXint w,h;
+  if(fxloadTIF(store,pixels,w,h,codec)){
+    setData(pixels,IMAGE_OWNED,w,h);
+    if(options&IMAGE_ALPHAGUESS) transp=guesstransp();
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
 // Clean up
 FXTIFIcon::~FXTIFIcon(){
   }
+
+}

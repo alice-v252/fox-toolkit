@@ -3,9 +3,9 @@
 *                                 Test Dialog Box                               *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997 by Jeroen van der Zijp.   All Rights Reserved.             *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
-* $Id: dialog.cpp,v 1.10 2001/12/20 19:01:16 jeroen Exp $                        *
+* $Id: dialog.cpp,v 1.44 2005/01/26 15:12:29 fox Exp $                          *
 ********************************************************************************/
 #include "fx.h"
 #include <stdio.h>
@@ -41,10 +41,10 @@ class DialogTester : public FXMainWindow {
 protected:
 
   // Member data
-  FXMenubar*         menubar;
-  FXMenuPane*        filemenu;
-  FXHorizontalFrame* contents;
-  FXTestDialog*      dialog;
+  FXMenuBar         *menubar;
+  FXMenuPane        *filemenu;
+  FXHorizontalFrame *contents;
+  FXTestDialog      *dialog;
 
 protected:
   DialogTester(){}
@@ -115,6 +115,13 @@ FXTestDialog::FXTestDialog(FXWindow* owner):
   new FXOption(pane,"Nine",NULL,NULL,0,JUSTIFY_HZ_APART|ICON_AFTER_TEXT);
   new FXOption(pane,"Ten",NULL,NULL,0,JUSTIFY_HZ_APART|ICON_AFTER_TEXT);
 
+  FXComboBox* combobox=new FXComboBox(contents,10,NULL,0,COMBOBOX_STATIC|FRAME_SUNKEN|FRAME_THICK|LAYOUT_SIDE_TOP);
+  combobox->setNumVisible(4);
+  combobox->appendItem("One");
+  combobox->appendItem("Two");
+  combobox->appendItem("Three");
+  combobox->appendItem("Four");
+
   // Option menu
   new FXOptionMenu(contents,pane,FRAME_RAISED|FRAME_THICK|JUSTIFY_HZ_APART|ICON_AFTER_TEXT|LAYOUT_CENTER_X|LAYOUT_CENTER_Y);
 
@@ -122,10 +129,10 @@ FXTestDialog::FXTestDialog(FXWindow* owner):
   new FXMenuButton(contents,"&Menu",NULL,menu,MENUBUTTON_DOWN|JUSTIFY_LEFT|LAYOUT_TOP|FRAME_RAISED|FRAME_THICK|ICON_AFTER_TEXT|LAYOUT_CENTER_X|LAYOUT_CENTER_Y);
 
   // Accept
-  new FXButton(buttons,"&Accept",NULL,this,ID_ACCEPT,FRAME_RAISED|FRAME_THICK|LAYOUT_RIGHT|LAYOUT_CENTER_Y);
+ new FXButton(buttons,"&Accept",NULL,this,ID_ACCEPT,BUTTON_DEFAULT|BUTTON_INITIAL|FRAME_RAISED|FRAME_THICK|LAYOUT_RIGHT|LAYOUT_CENTER_Y);
 
   // Cancel
-  new FXButton(buttons,"&Cancel",NULL,this,ID_CANCEL,FRAME_RAISED|FRAME_THICK|LAYOUT_RIGHT|LAYOUT_CENTER_Y);
+  new FXButton(buttons,"&Cancel",NULL,this,ID_CANCEL,BUTTON_DEFAULT|FRAME_RAISED|FRAME_THICK|LAYOUT_RIGHT|LAYOUT_CENTER_Y);
   }
 
 
@@ -157,21 +164,21 @@ FXIMPLEMENT(DialogTester,FXMainWindow,DialogTesterMap,ARRAYNUMBER(DialogTesterMa
 DialogTester::DialogTester(FXApp* a):FXMainWindow(a,"Group Box Test",NULL,NULL,DECOR_ALL,0,0,400,200){
 
   // Tooltip
-  new FXTooltip(getApp());
+  new FXToolTip(getApp());
 
   // Menubar
-  menubar=new FXMenubar(this,LAYOUT_SIDE_TOP|LAYOUT_FILL_X);
+  menubar=new FXMenuBar(this,LAYOUT_SIDE_TOP|LAYOUT_FILL_X);
+
+  // File Menu
+  filemenu=new FXMenuPane(this);
+  new FXMenuCommand(filemenu,"&Quit\tCtl-Q",NULL,getApp(),FXApp::ID_QUIT,0);
+  new FXMenuTitle(menubar,"&File",NULL,filemenu);
 
   // Separator
   new FXHorizontalSeparator(this,LAYOUT_SIDE_TOP|LAYOUT_FILL_X|SEPARATOR_GROOVE);
 
-  // File Menu
-  filemenu=new FXMenuPane(this);
-  new FXMenuCommand(filemenu,"&Quit",NULL,getApp(),FXApp::ID_QUIT,0);
-  new FXMenuTitle(menubar,"&File",NULL,filemenu);
-
   // Contents
-  contents=new FXHorizontalFrame(this,LAYOUT_SIDE_TOP|FRAME_NONE|LAYOUT_FILL_X|LAYOUT_FILL_Y|PACK_UNIFORM_WIDTH);
+  contents=new FXHorizontalFrame(this,LAYOUT_SIDE_BOTTOM|FRAME_NONE|LAYOUT_FILL_X|PACK_UNIFORM_WIDTH);
 
   // Button to pop normal dialog
   new FXButton(contents,"&Non-Modal Dialog...\tDisplay normal dialog",NULL,this,ID_SHOWDIALOG,FRAME_RAISED|FRAME_THICK|LAYOUT_CENTER_X|LAYOUT_CENTER_Y);
@@ -181,6 +188,10 @@ DialogTester::DialogTester(FXApp* a):FXMainWindow(a,"Group Box Test",NULL,NULL,D
 
   // Build a dialog box
   dialog=new FXTestDialog(this);
+
+  // Separator
+  new FXHorizontalSeparator(this,LAYOUT_SIDE_BOTTOM|LAYOUT_FILL_X|SEPARATOR_GROOVE);
+
   }
 
 
@@ -192,7 +203,7 @@ DialogTester::~DialogTester(){
 
 // Open
 long DialogTester::onCmdShowDialog(FXObject*,FXSelector,void*){
-  dialog->show();
+  dialog->show(PLACEMENT_OWNER);
   return 1;
   }
 
@@ -200,7 +211,7 @@ long DialogTester::onCmdShowDialog(FXObject*,FXSelector,void*){
 // Option
 long DialogTester::onCmdShowDialogModal(FXObject*,FXSelector,void*){
   FXTestDialog modaldialog(this);
-  modaldialog.execute();
+  modaldialog.execute(PLACEMENT_OWNER);
   return 1;
   }
 

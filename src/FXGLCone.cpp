@@ -3,7 +3,7 @@
 *                      O p e n G L   C o n e   O b j e c t                      *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * Contributed by: Angel-Ventura Mendo Gomez <ventura@labri.u-bordeaux.fr>       *
 *********************************************************************************
@@ -21,17 +21,20 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXGLCone.cpp,v 1.12 2002/01/18 22:43:00 jeroen Exp $                     *
+* $Id: FXGLCone.cpp,v 1.25 2005/01/16 16:06:07 fox Exp $                        *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
-#include "FXVec.h"
-#include "FXHVec.h"
-#include "FXQuat.h"
-#include "FXHMat.h"
-#include "FXRange.h"
+#include "FXVec2f.h"
+#include "FXVec3f.h"
+#include "FXVec4f.h"
+#include "FXQuatf.h"
+#include "FXMat4f.h"
+#include "FXRangef.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
@@ -54,19 +57,22 @@
 #define FXGLCONE_STACKS_NUMBER		20
 #define FXGLCONE_LOOPS			4
 
+using namespace FX;
+
 /*******************************************************************************/
 
+namespace FX {
 
 // Object implementation
 FXIMPLEMENT(FXGLCone,FXGLShape,NULL,0)
 
 
 // Create cone
-FXGLCone::FXGLCone():height(1.0),radius(1.0f){
+FXGLCone::FXGLCone():height(1.0f),radius(1.0f){
   FXTRACE((100,"FXGLCone::FXGLCone\n"));
-  range[0][0]=-radius; range[0][1]=radius;
-  range[1][0]=0;       range[1][1]=height;
-  range[2][0]=-radius; range[2][1]=radius;
+  range.lower.x=-radius; range.upper.x=radius;
+  range.lower.y=0.0f;    range.upper.y=height;
+  range.lower.z=-radius; range.upper.z=radius;
   }
 
 
@@ -74,9 +80,9 @@ FXGLCone::FXGLCone():height(1.0),radius(1.0f){
 FXGLCone::FXGLCone(FXfloat x,FXfloat y,FXfloat z,FXfloat h,FXfloat r):
   FXGLShape(x,y,z,SHADING_SMOOTH|STYLE_SURFACE),height(h),radius(r){
   FXTRACE((100,"FXGLCone::FXGLCone\n"));
-  range[0][0]=-radius; range[0][1]=radius;
-  range[1][0]=0;       range[1][1]=height;
-  range[2][0]=-radius; range[2][1]=radius;
+  range.lower.x=-radius; range.upper.x=radius;
+  range.lower.y=0.0f;    range.upper.y=height;
+  range.lower.z=-radius; range.upper.z=radius;
   }
 
 
@@ -84,9 +90,9 @@ FXGLCone::FXGLCone(FXfloat x,FXfloat y,FXfloat z,FXfloat h,FXfloat r):
 FXGLCone::FXGLCone(FXfloat x,FXfloat y,FXfloat z,FXfloat h, FXfloat r,const FXMaterial& mtl):
   FXGLShape(x,y,z,SHADING_SMOOTH|STYLE_SURFACE,mtl,mtl),height(h),radius(r){
   FXTRACE((100,"FXGLCone::FXGLCone\n"));
-  range[0][0]=-radius; range[0][1]=radius;
-  range[1][0]=0;       range[1][1]=height;
-  range[2][0]=-radius; range[2][1]=radius;
+  range.lower.x=-radius; range.upper.x=radius;
+  range.lower.y=0.0f;    range.upper.y=height;
+  range.lower.z=-radius; range.upper.z=radius;
   }
 
 
@@ -100,7 +106,7 @@ FXGLCone::FXGLCone(const FXGLCone& orig):FXGLShape(orig){
 
 // Draw
 void FXGLCone::drawshape(FXGLViewer*){
-#ifdef HAVE_OPENGL
+#ifdef HAVE_GL_H
   GLUquadricObj* quad=gluNewQuadric();
   gluQuadricDrawStyle(quad,(GLenum)GLU_FILL);
   /*
@@ -108,7 +114,7 @@ void FXGLCone::drawshape(FXGLViewer*){
     gluQuadricOrientation(quad,(GLenum)GLU_OUTSIDE);
   */
   glPushMatrix();
-  glRotatef(-90,1,0,0);
+  glRotatef(-90.0f,1.0f,0.0f,0.0f);
   gluCylinder(quad,radius,0,height,FXGLCONE_SLICES_NUMBER,FXGLCONE_STACKS_NUMBER);
   gluQuadricOrientation(quad,(GLenum)GLU_INSIDE);
   gluDisk(quad,0,radius,FXGLCONE_SLICES_NUMBER,FXGLCONE_LOOPS);
@@ -142,3 +148,5 @@ void FXGLCone::load(FXStream& store){
 FXGLCone::~FXGLCone(){
   FXTRACE((100,"FXGLCone::~FXGLCone\n"));
   }
+
+}

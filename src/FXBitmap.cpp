@@ -3,7 +3,7 @@
 *                             B i t m a p    O b j e c t                        *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXBitmap.cpp,v 1.35 2002/01/18 22:42:58 jeroen Exp $                     *
+* $Id: FXBitmap.cpp,v 1.77 2005/01/16 16:06:06 fox Exp $                        *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -36,6 +38,8 @@
 #include "FXBitmap.h"
 #include "FXVisual.h"
 #include "FXDCWindow.h"
+#include "FXException.h"
+
 
 /*
   Note:
@@ -55,14 +59,23 @@
       - The only drawback I can see is it will be a fairly large implementation
         effort...
 
-  - Need to implement restore, resize, and such.
-
+  - The scale, mirror, rotate and crop API's have been contributed by Marc Cartright,
+    <macartright@hotmail.com>.
+  - The XBM format maps 1 to black instead of white; perhaps this should
+    be reversed.
 */
 
 #define DISPLAY(app) ((Display*)((app)->display))
 
+// Changable bitmap options
+#define BITMAP_MASK   (BITMAP_KEEP|BITMAP_SHMI|BITMAP_SHMP)
+
+
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
 
 
 // Object implementation
@@ -72,6 +85,7 @@ FXIMPLEMENT(FXBitmap,FXDrawable,NULL,0)
 // For deserialization
 FXBitmap::FXBitmap(){
   data=NULL;
+  bytewidth=0;
   options=0;
   }
 
@@ -79,45 +93,61 @@ FXBitmap::FXBitmap(){
 // Initialize
 FXBitmap::FXBitmap(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):FXDrawable(a,w,h){
   FXTRACE((100,"FXBitmap::FXBitmap %p\n",this));
+  FXASSERT((opts&~(BITMAP_OWNED|BITMAP_MASK))==0);
   visual=getApp()->getMonoVisual();
-  if(pix) opts&=~BITMAP_OWNED;
   data=(FXuchar*)pix;
+  bytewidth=(width+7)>>3;
   options=opts;
+  if(!data && (options&BITMAP_OWNED)){
+    if(!FXCALLOC(&data,FXuchar,height*bytewidth)){ throw FXMemoryException("unable to construct bitmap"); }
+    }
   }
 
 
 // Create bitmap
 void FXBitmap::create(){
   if(!xid){
-    if(getApp()->initialized){
+    if(getApp()->isInitialized()){
       FXTRACE((100,"%s::create %p\n",getClassName(),this));
+
 #ifndef WIN32
 
       // Initialize visual
       visual->create();
 
       // Make pixmap
-      xid=XCreatePixmap(DISPLAY(getApp()),XDefaultRootWindow(DISPLAY(getApp())),width,height,1);
-      if(!xid){ fxerror("%s::create: unable to create bitmap.\n",getClassName()); }
+      xid=XCreatePixmap(DISPLAY(getApp()),XDefaultRootWindow(DISPLAY(getApp())),FXMAX(width,1),FXMAX(height,1),1);
+
 #else
 
       // Initialize visual
       visual->create();
 
       // Create uninitialized shape bitmap
-      xid=CreateBitmap(width,height,1,1,NULL);
-      if(!xid){ fxerror("%s::create: unable to create bitmap.\n",getClassName()); }
+      xid=CreateBitmap(FXMAX(width,1),FXMAX(height,1),1,1,NULL);
+
 #endif
+
+      // Were we successful?
+      if(!xid){ throw FXImageException("unable to create bitmap"); }
+
       // Render pixels
       render();
 
-      // Zap data
-      if(!(options&BITMAP_KEEP) && (options&BITMAP_OWNED)){
-        options&=~BITMAP_OWNED;
-        FXFREE(&data);
-        }
+      // If we're not keeping the pixel buffer, release it
+      if(!(options&BITMAP_KEEP)) release();
       }
     }
+  }
+
+
+// Release the client-side buffer, free it if it was owned.
+void FXBitmap::release(){
+  if(options&BITMAP_OWNED){
+    options&=~BITMAP_OWNED;
+    FXFREE(&data);
+    }
+  data=NULL;
   }
 
 
@@ -134,7 +164,7 @@ void FXBitmap::detach(){
 // Destroy bitmap
 void FXBitmap::destroy(){
   if(xid){
-    if(getApp()->initialized){
+    if(getApp()->isInitialized()){
       FXTRACE((100,"%s::destroy %p\n",getClassName(),this));
 #ifndef WIN32
 
@@ -151,16 +181,12 @@ void FXBitmap::destroy(){
   }
 
 
+#ifndef WIN32
+
+
 // Render into pixmap
 void FXBitmap::render(){
   if(xid){
-
-    FXTRACE((100,"%s::render bitmap %p\n",getClassName(),this));
-
-    // Do it for X-Windows
-#ifndef WIN32
-
-    // XImage xim;
     register XImage *xim=NULL;
     register Visual *vis;
     register int size;
@@ -169,25 +195,24 @@ void FXBitmap::render(){
     XGCValues values;
     GC gc;
 
-    // Check for legal size
-    if(width<1 || height<1){ fxerror("%s::render: illegal bitmap size.\n",getClassName()); }
+    FXTRACE((100,"%s::render bitmap %p\n",getClassName(),this));
 
-    // Make GC
-    values.foreground=0xffffffff;
-    values.background=0;
-    gc=XCreateGC(DISPLAY(getApp()),xid,GCForeground|GCBackground,&values);
+    // Fill with pixels if there is data
+    if(data && 0<width && 0<height){
 
-    // Just leave if black if no data
-    if(data){
+      // Make GC
+      values.foreground=0xffffffff;
+      values.background=0;
+      gc=XCreateGC(DISPLAY(getApp()),xid,GCForeground|GCBackground,&values);
 
       // Get Visual
       vis=(Visual*)visual->visual;
 
       xim=XCreateImage(DISPLAY(getApp()),vis,1,XYBitmap,0,NULL,width,height,8,(width+7)>>3);
-      if(!xim){ fxerror("%s::render: unable to render image.\n",getClassName()); }
+      if(!xim){ throw FXImageException("unable to render bitmap"); }
 
       // Try create temp pixel store
-      if(!FXMALLOC(&xim->data,char,xim->bytes_per_line*height)){ fxerror("%s::render: unable to allocate memory.\n",getClassName()); }
+      if(!FXMALLOC(&xim->data,char,xim->bytes_per_line*height)){ throw FXMemoryException("unable to render bitmap"); }
 
       // Render bits into server-formatted bitmap
       size=xim->bytes_per_line*height;
@@ -207,37 +232,34 @@ void FXBitmap::render(){
       XPutImage(DISPLAY(getApp()),xid,gc,xim,0,0,0,0,width,height);
       FXFREE(&xim->data);
       XDestroyImage(xim);
+      XFreeGC(DISPLAY(getApp()),gc);
       }
+    }
+  }
 
-    // No data, fill with black
-    else{
-      XFillRectangle(DISPLAY(getApp()),xid,gc,0,0,width,height);
-      }
-
-    // We're done
-    XFreeGC(DISPLAY(getApp()),gc);
 
 #else
 
+
+struct BITMAPINFO2 {
+  BITMAPINFOHEADER bmiHeader;
+  RGBQUAD          bmiColors[2];
+  };
+
+
+// Render into pixmap
+void FXBitmap::render(){
+  if(xid){
     register FXuchar *p,*q,bits;
-    register FXint nb,i,j,bytes_per_line;
+    register FXint i,j,bytes_per_line;
     FXuchar *widedata;
 
-    // Check for legal size
-    if(width<1 || height<1){ fxerror("%s::render: illegal bitmap size.\n",getClassName()); }
+    FXTRACE((100,"%s::render bitmap %p\n",getClassName(),this));
 
-    HDC hdcmem=::CreateCompatibleDC(NULL);
+    // Fill with pixels if there is data
+    if(data && 0<width && 0<height){
 
-    // Fill with data
-    if(data){
-
-      // Now make the device dependent bitmap
-      struct BITMAPINFO2 {
-        BITMAPINFOHEADER bmiHeader;
-        RGBQUAD          bmiColors[2];
-        };
-
-      // Set up the bitmap info
+      // Set up the bitmap info, with fixed black/white palette
       BITMAPINFO2 bmi;
       bmi.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
       bmi.bmiHeader.biWidth=width;
@@ -259,58 +281,42 @@ void FXBitmap::render(){
       bmi.bmiColors[1].rgbRed=255;
       bmi.bmiColors[1].rgbReserved=0;
 
-      nb=(width+7)>>3;
+      // Fill temp array
       bytes_per_line=((width+31)&~31)>>3;
-      FXCALLOC(&widedata,FXuchar,height*bytes_per_line);
+      if(!FXCALLOC(&widedata,FXuchar,height*bytes_per_line)){ throw FXMemoryException("unable to render bitmap"); }
       p=widedata+(height-1)*bytes_per_line;
       q=data;
       for(i=0; i<height; i++){
-        for(j=0; j<nb; j++){
+        for(j=0; j<bytewidth; j++){
           bits=~q[j];
           p[j]=FXBITREVERSE(bits);
           }
-        q+=nb;
+        q+=bytewidth;
         p-=bytes_per_line;
         }
-      if(!SetDIBits(hdcmem,(HBITMAP)xid,0,height,widedata,(BITMAPINFO*)&bmi,DIB_RGB_COLORS)){
-        fxerror("%s::render: unable to render pixels\n",getClassName());
-        }
-      FXFREE(&widedata);
-      GdiFlush();
-      }
 
-    // No data, fill with black
-    else{
-      SelectObject(hdcmem,(HBITMAP)xid);
-      BitBlt(hdcmem,0,0,width,height,hdcmem,0,0,BLACKNESS);
+      // Get memory device context
+      HDC hdcmem=::CreateCompatibleDC(NULL);
+      if(!SetDIBits(hdcmem,(HBITMAP)xid,0,height,widedata,(BITMAPINFO*)&bmi,DIB_RGB_COLORS)){
+        throw FXImageException("unable to render bitmap");
+        }
+      GdiFlush();
+      FXFREE(&widedata);
+      ::DeleteDC(hdcmem);
       }
-    ::DeleteDC(hdcmem);
-#endif
     }
   }
 
-
-// Get pixel at x,y
-FXbool FXBitmap::getPixel(FXint x,FXint y) const {
-  register FXint nb=(width+7)>>3;
-  return (data[y*nb+(x>>3)] & (1<<(x&7)))!=0;
-  }
-
-
-// Change pixel at x,y
-void FXBitmap::setPixel(FXint x,FXint y,FXbool color){
-  register FXint nb=(width+7)>>3;
-  if(color) data[y*nb+(x>>3)]|=(1<<(x&7)); else data[y*nb+(x>>3)]&=~(1<<(x&7));
-  }
+#endif
 
 
 // Resize bitmap to the specified width and height; the contents become undefined
 void FXBitmap::resize(FXint w,FXint h){
+  register FXint bw;
   if(w<1) w=1;
   if(h<1) h=1;
-  width=w;
-  height=h;
-  FXTRACE((100,"%s::resize %p\n",getClassName(),this));
+  FXTRACE((100,"%s::resize(%d,%d)\n",getClassName(),w,h));
+  bw=(w+7)>>3;
   if(xid){
 
 #ifndef WIN32
@@ -319,8 +325,8 @@ void FXBitmap::resize(FXint w,FXint h){
     XFreePixmap(DISPLAY(getApp()),xid);
 
     // Make new pixmap
-    xid=XCreatePixmap(DISPLAY(getApp()),XDefaultRootWindow(DISPLAY(getApp())),width,height,1);
-    if(!xid){ fxerror("%s::resize: unable to resize bitmap.\n",getClassName()); }
+    xid=XCreatePixmap(DISPLAY(getApp()),XDefaultRootWindow(DISPLAY(getApp())),w,h,1);
+    if(!xid){ throw FXImageException("unable to resize bitmap"); }
 
 #else
 
@@ -328,12 +334,346 @@ void FXBitmap::resize(FXint w,FXint h){
     DeleteObject(xid);
 
     // Create a bitmap compatible with current display
-    xid=CreateBitmap(width,height,1,1,NULL);
-    if(!xid){ fxerror("%s::resize: unable to resize bitmap.\n",getClassName()); }
+    xid=CreateBitmap(w,h,1,1,NULL);
+    if(!xid){ throw FXImageException("unable to resize bitmap"); }
 
 #endif
     }
+
+  // Resize data array; only do the work if the new
+  // array is a different size as measured in bytes!
+  if(data){
+    if(!(options&BITMAP_OWNED)){        // Need to own array
+      if(!FXMALLOC(&data,FXColor,h*bw)){ throw FXMemoryException("unable to resize bitmap"); }
+      options|=BITMAP_OWNED;
+      }
+    else if(h*bw!=height*bytewidth){
+      if(!FXRESIZE(&data,FXColor,h*bw)){ throw FXMemoryException("unable to resize bitmap"); }
+      }
+    }
+
+  // Remember new size
+  bytewidth=bw;
+  width=w;
+  height=h;
   }
+
+
+// Fill bitmap with uniform value
+void FXBitmap::fill(FXbool color){
+  if(data){
+    memset(data,-color,height*bytewidth);
+    }
+  }
+
+
+// Rescale pixels to the specified width and height; just nearest
+// neighbor; there ain't no such thing as anti-aliasing in bitmaps!
+void FXBitmap::scale(FXint w,FXint h){
+  if(w<1) w=1;
+  if(h<1) h=1;
+  FXTRACE((100,"%s::scale(%d,%d)\n",getClassName(),w,h));
+  if(w!=width || h!=height){
+    if(data){
+      register FXuchar *q,*p,bits;
+      register FXint xs=(width<<16)/w;
+      register FXint ys=(height<<16)/h;
+      register FXint bw=bytewidth;
+      register FXint i,j,x,y,xx;
+      FXuchar *interim;
+
+      // Copy to old buffer
+      if(!FXMEMDUP(&interim,data,FXuchar,height*bytewidth)){ throw FXMemoryException("unable to scale bitmap"); }
+
+      // Resize the pixmap and target buffer
+      resize(w,h);
+
+      // Scale the bitmap
+      i=0;
+      y=ys>>1;
+      p=data;
+      do{
+        j=0;
+        x=xs>>1;
+        q=interim+(y>>16)*bw;
+        bits=0;
+        do{
+          xx=x>>16;
+          bits|=((q[xx>>3]>>(xx&7))&1)<<(j&7);
+          if((j&7)==7){ *p++=bits; bits=0; }
+          x+=xs;
+          }
+        while(++j<w);
+        if(j&7){ *p++=bits; }
+        y+=ys;
+        }
+      while(++i<h);
+
+      // Free interim buffer
+      FXFREE(&interim);
+      render();
+      }
+    else{
+      resize(w,h);
+      }
+    }
+  }
+
+
+
+// Mirror bitmap horizontally and/or vertically
+void FXBitmap::mirror(FXbool horizontal,FXbool vertical){
+  FXTRACE((100,"%s::mirror(%d,%d)\n",getClassName(),horizontal,vertical));
+  if(horizontal || vertical){
+    if(data){
+      register FXuchar *paa,*pa,*pbb,*pb;
+      register FXint sa=(8-width)&7;
+      register FXint sb=8-sa;
+      register FXuint t;
+      FXuchar line[4096];               // Maximum width is 32768/8=4096 bytes
+      if(vertical && height>1){         // Mirror vertically
+        paa=data;
+        pbb=data+bytewidth*(height-1);
+        do{
+          pa=paa; paa+=bytewidth;
+          pb=pbb; pbb-=bytewidth;
+          do{
+            t=*pa; *pa++=*pb; *pb++=t;
+            }
+          while(pa<paa);
+          }
+        while(paa<pbb);
+        }
+      if(horizontal && width>1){        // Mirror horizontally
+        paa=data;
+        pbb=data+bytewidth*height;
+        do{
+          pa=paa;
+          pb=line+bytewidth;
+          do{
+            *--pb=*paa++;               // Gnarly!
+            }
+          while(line<pb);
+          do{
+            t=*pb++ << sa;
+            t|=*pb >> sb;
+            *pa++=FXBITREVERSE(t);
+            }
+          while(pa<paa);
+          }
+        while(paa<pbb);
+        }
+      render();
+      }
+    }
+  }
+
+
+// Rotate bitmap by degrees ccw
+void FXBitmap::rotate(FXint degrees){
+  FXTRACE((100,"%s::rotate(%d)\n",getClassName(),degrees));
+  degrees=(degrees+360)%360;
+  if(degrees!=0 && width>1 && height>1){
+    if(data){
+      register FXuchar *p,*q,bits;
+      register FXint bw=bytewidth;
+      register FXint i,j,x;
+      FXuchar *olddata;
+      if(!FXMEMDUP(&olddata,data,FXuchar,bytewidth*height)){ throw FXMemoryException("unable to rotate bitmap"); }
+      switch(degrees){
+        case 90:
+          resize(height,width);
+          i=height-1;
+          p=data;
+          do{
+            j=0;
+            q=olddata+(i>>3);
+            bits=0;
+            do{
+              bits|=((q[0]>>(i&7))&1)<<(j&7);
+              if((j&7)==7){ *p++=bits; bits=0; }
+              q+=bw;
+              }
+            while(++j<width);
+            if(j&7){ *p++=bits; }
+            }
+          while(--i>=0);
+          break;
+        case 180:               // FIXME works but not as fast as it could be
+          i=height-1;
+          p=data;
+          q=olddata+(height-1)*bw;
+          do{
+            j=0;
+            bits=0;
+            x=width-1;
+            do{
+              bits|=((q[x>>3]>>(x&7))&1)<<(j&7);
+              if((j&7)==7){ *p++=bits; bits=0; }
+              x--;
+              }
+            while(++j<width);
+            if(j&7){ *p++=bits; }
+            q-=bw;
+            }
+          while(--i>=0);
+          break;
+        case 270:
+          resize(height,width);
+          i=0;
+          p=data;
+          do{
+            j=0;
+            q=olddata+(i>>3)+(width-1)*bw;
+            bits=0;
+            do{
+              bits|=((q[0]>>(i&7))&1)<<(j&7);
+              if((j&7)==7){ *p++=bits; bits=0; }
+              q-=bw;
+              }
+            while(++j<width);
+            if(j&7){ *p++=bits; }
+            }
+          while(++i<height);
+          break;
+        default:
+          fxwarning("%s::rotate: rotation by %d degrees not implemented.\n",getClassName(),degrees);
+          break;
+        }
+      FXFREE(&olddata);
+      render();
+      }
+    else{
+      switch(degrees){
+        case 90:
+          resize(height,width);
+          break;
+        case 180:
+          resize(width,height);
+          break;
+        case 270:
+          resize(height,width);
+          break;
+        default:
+          fxwarning("%s::rotate: rotation by %d degrees not implemented.\n",getClassName(),degrees);
+          break;
+        }
+      }
+    }
+  }
+
+
+// Crop bitmap to given rectangle
+void FXBitmap::crop(FXint x,FXint y,FXint w,FXint h,FXbool color){
+  if(w<1) w=1;
+  if(h<1) h=1;
+  if(x>=width || y>=height || x+w<=0 || y+h<=0){ fxerror("%s::crop: bad arguments.\n",getClassName()); }
+  FXTRACE((1,"%s::crop(%d,%d,%d,%d)\n",getClassName(),x,y,w,h));
+  if(data){
+    register FXuchar *pnn,*poo,*yyy,*pn,*po,*xx;
+    register FXint oldbw=bytewidth;
+    register FXint newbw=(w+7)>>3;
+    register FXint cpybw;
+    register FXint ow=width;
+    register FXint oh=height;
+    register FXint nw=w;
+    register FXint nh=h;
+    register FXint cw;
+    register FXint ch;
+    register FXint sh;
+    register FXuint t;
+    FXuchar *olddata;
+    if(!FXMALLOC(&olddata,FXuchar,oh*bytewidth+1)){ throw FXMemoryException("unable to crop bitmap"); }
+    memcpy(olddata,data,oh*bytewidth);
+    resize(w,h);
+    pnn=data;
+    yyy=data+newbw*nh;
+    do{
+      *pnn++=-color;            // 1 -> 0xff, 0 -> 0xff
+      }
+    while(pnn<yyy);
+    if(x<0){                    // x < 0
+      cw=FXMIN(ow,x+nw);
+      if(y<0){                  // y < 0
+        pnn=data-newbw*y;
+        poo=olddata;
+        ch=FXMIN(oh,y+nh);
+        }
+      else{                     // y >= 0
+        pnn=data;
+        poo=olddata+oldbw*y;
+        ch=FXMIN(oh,y+nh)-y;
+        }
+      pnn+=(-x)>>3;
+      sh=8-((-x)&7);
+      FXASSERT(cw>0);
+      FXASSERT(ch>0);
+      yyy=pnn+newbw*ch;
+      cpybw=((cw-x+7)>>3)-((-x)>>3);
+      FXTRACE((1,"ow=%d oh=%d nw=%d nh=%d cw=%d ch=%d sh=%d cpybw=%d\n",ow,oh,nw,nh,cw,ch,sh,cpybw));
+      do{
+        pn=pnn;
+        po=poo;
+        xx=pnn+cpybw;
+        t=(-color)&0xff;
+        do{
+          t|=(*po++)<<8;
+          *pn++=t>>sh;
+          t>>=8;
+          }
+        while(pn<xx);
+        if(color){              // A bit ugly but it'll have to do for now...
+          *(pn-1)|=0xff<<((cw-x)&7);
+          }
+        else{
+          *(pn-1)&=~(0xff<<((cw-x)&7));
+          }
+        pnn+=newbw;
+        poo+=oldbw;
+        }
+      while(pnn<yyy);
+      }
+    else{                       // x >= 0
+      cw=FXMIN(ow,x+nw)-x;
+      if(y<0){                  // y < 0
+        pnn=data-newbw*y;
+        poo=olddata;
+        ch=FXMIN(oh,y+nh);
+        }
+      else{                     // y >= 0
+        pnn=data;
+        poo=olddata+oldbw*y;
+        ch=FXMIN(oh,y+nh)-y;
+        }
+      poo+=x>>3;
+      sh=x&7;
+      FXASSERT(cw>0);
+      FXASSERT(ch>0);
+      yyy=pnn+newbw*ch;
+      cpybw=(cw+7)>>3;
+      do{
+        pn=pnn;
+        po=poo;
+        xx=pnn+cpybw;
+        do{
+          t=*po++;
+          t|=*po<<8;
+          *pn++=t>>sh;
+          }
+        while(pn<xx);
+        pnn+=newbw;
+        poo+=oldbw;
+        }
+      while(pnn<yyy);
+      }
+    FXFREE(&olddata);
+    render();
+    }
+  else{
+    resize(w,h);
+    }
+  }
+
 
 
 #ifdef WIN32
@@ -354,20 +694,28 @@ int FXBitmap::ReleaseDC(FXID hdc) const {
 #endif
 
 
+// Change options
+void FXBitmap::setOptions(FXuint opts){
+  options=(options&~BITMAP_MASK) | (opts&BITMAP_MASK);
+  }
+
+
 // Save pixel data only
-void FXBitmap::savePixels(FXStream& store) const {
-  FXuint size=height*((width+7)>>3);
+FXbool FXBitmap::savePixels(FXStream& store) const {
+  FXuint size=height*bytewidth;
   store.save(data,size);
+  return TRUE;
   }
 
 
 // Load pixel data only
-void FXBitmap::loadPixels(FXStream& store){
-  FXuint size=height*((width+7)>>3);
-  if(options&BITMAP_OWNED) FXFREE(&data);
-  FXMALLOC(&data,FXuchar,size);
+FXbool FXBitmap::loadPixels(FXStream& store){
+  FXuint size=height*bytewidth;
+  if(options&BITMAP_OWNED){ FXFREE(&data); }
+  if(!FXMALLOC(&data,FXuchar,size)) return FALSE;
   store.load(data,size);
   options|=BITMAP_OWNED;
+  return TRUE;
   }
 
 
@@ -396,6 +744,7 @@ FXBitmap::~FXBitmap(){
   FXTRACE((100,"FXBitmap::~FXBitmap %p\n",this));
   destroy();
   if(options&BITMAP_OWNED){FXFREE(&data);}
-  data=(FXuchar*)-1;
+  data=(FXuchar*)-1L;
   }
 
+}

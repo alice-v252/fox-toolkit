@@ -3,7 +3,7 @@
 *                              D a t a   T a r g e t                            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXDataTarget.cpp,v 1.20 2002/01/18 22:42:59 jeroen Exp $                 *
+* $Id: FXDataTarget.cpp,v 1.33 2005/01/16 16:06:06 fox Exp $                    *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -47,11 +49,16 @@
   - When the sender of onCmdValue does not understand the ID_GETXXXXVALUE message,
     the data target keeps the same value as before.
   - Catch SEL_CHANGED when we have expunged this from FXTextField.
+  - DT_VOID, i.e. unconnected FXDataTarget maybe it should grey out corresponding
+    widgets.
+  - Need to add ID_GETLONGVALUE/ID_SETLONGVALUE message handlers some day.
 */
 
+using namespace FX;
 
 /*******************************************************************************/
 
+namespace FX {
 
 // Map
 FXDEFMAP(FXDataTarget) FXDataTargetMap[]={
@@ -74,44 +81,54 @@ long FXDataTarget::onCmdValue(FXObject* sender,FXSelector sel,void*){
   switch(type){
     case DT_CHAR:
       i=*((FXchar*)data);
-      sender->handle(this,MKUINT(FXWindow::ID_GETINTVALUE,SEL_COMMAND),(void*)&i);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_GETINTVALUE),(void*)&i);
       *((FXchar*)data)=i;
       break;
     case DT_UCHAR:
       i=*((FXuchar*)data);
-      sender->handle(this,MKUINT(FXWindow::ID_GETINTVALUE,SEL_COMMAND),(void*)&i);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_GETINTVALUE),(void*)&i);
       *((FXuchar*)data)=i;
       break;
     case DT_SHORT:
       i=*((FXshort*)data);
-      sender->handle(this,MKUINT(FXWindow::ID_GETINTVALUE,SEL_COMMAND),(void*)&i);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_GETINTVALUE),(void*)&i);
       *((FXshort*)data)=i;
       break;
     case DT_USHORT:
       i=*((FXushort*)data);
-      sender->handle(this,MKUINT(FXWindow::ID_GETINTVALUE,SEL_COMMAND),(void*)&i);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_GETINTVALUE),(void*)&i);
       *((FXushort*)data)=i;
       break;
     case DT_INT:
-      sender->handle(this,MKUINT(FXWindow::ID_GETINTVALUE,SEL_COMMAND),data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_GETINTVALUE),data);
       break;
     case DT_UINT:
-      sender->handle(this,MKUINT(FXWindow::ID_GETINTVALUE,SEL_COMMAND),data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_GETINTVALUE),data);
+      break;
+    case DT_LONG:
+      i=(FXint) *((FXlong*)data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_GETINTVALUE),(void*)&i);
+      *((FXlong*)data)=i;
+      break;
+    case DT_ULONG:
+      i=(FXint) *((FXulong*)data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_GETINTVALUE),(void*)&i);
+      *((FXulong*)data)=i;
       break;
     case DT_FLOAT:
       d=*((FXfloat*)data);
-      sender->handle(this,MKUINT(FXWindow::ID_GETREALVALUE,SEL_COMMAND),(void*)&d);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_GETREALVALUE),(void*)&d);
       *((FXfloat*)data)=(FXfloat)d;
       break;
     case DT_DOUBLE:
-      sender->handle(this,MKUINT(FXWindow::ID_GETREALVALUE,SEL_COMMAND),data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_GETREALVALUE),data);
       break;
     case DT_STRING:
-      sender->handle(this,MKUINT(FXWindow::ID_GETSTRINGVALUE,SEL_COMMAND),data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_GETSTRINGVALUE),data);
       break;
     }
   if(target){
-    target->handle(this,MKUINT(message,SELTYPE(sel)),data);
+    target->handle(this,FXSEL(FXSELTYPE(sel),message),data);
     }
   return 1;
   }
@@ -124,35 +141,43 @@ long FXDataTarget::onUpdValue(FXObject* sender,FXSelector,void*){
   switch(type){
     case DT_CHAR:
       i=*((FXchar*)data);
-      sender->handle(this,MKUINT(FXWindow::ID_SETINTVALUE,SEL_COMMAND),(void*)&i);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_SETINTVALUE),(void*)&i);
       break;
     case DT_UCHAR:
       i=*((FXuchar*)data);
-      sender->handle(this,MKUINT(FXWindow::ID_SETINTVALUE,SEL_COMMAND),(void*)&i);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_SETINTVALUE),(void*)&i);
       break;
     case DT_SHORT:
       i=*((FXshort*)data);
-      sender->handle(this,MKUINT(FXWindow::ID_SETINTVALUE,SEL_COMMAND),(void*)&i);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_SETINTVALUE),(void*)&i);
       break;
     case DT_USHORT:
       i=*((FXushort*)data);
-      sender->handle(this,MKUINT(FXWindow::ID_SETINTVALUE,SEL_COMMAND),(void*)&i);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_SETINTVALUE),(void*)&i);
       break;
     case DT_INT:
-      sender->handle(this,MKUINT(FXWindow::ID_SETINTVALUE,SEL_COMMAND),data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_SETINTVALUE),data);
       break;
     case DT_UINT:
-      sender->handle(this,MKUINT(FXWindow::ID_SETINTVALUE,SEL_COMMAND),data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_SETINTVALUE),data);
+      break;
+    case DT_LONG:
+      i=(FXint) *((FXlong*)data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_SETINTVALUE),(void*)&i);
+      break;
+    case DT_ULONG:
+      i=(FXint) *((FXulong*)data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_SETINTVALUE),(void*)&i);
       break;
     case DT_FLOAT:
       d=*((FXfloat*)data);
-      sender->handle(this,MKUINT(FXWindow::ID_SETREALVALUE,SEL_COMMAND),(void*)&d);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_SETREALVALUE),(void*)&d);
       break;
     case DT_DOUBLE:
-      sender->handle(this,MKUINT(FXWindow::ID_SETREALVALUE,SEL_COMMAND),data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_SETREALVALUE),data);
       break;
     case DT_STRING:
-      sender->handle(this,MKUINT(FXWindow::ID_SETSTRINGVALUE,SEL_COMMAND),data);
+      sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_SETSTRINGVALUE),data);
       break;
     }
   return 1;
@@ -161,7 +186,7 @@ long FXDataTarget::onUpdValue(FXObject* sender,FXSelector,void*){
 
 // Value set from message id
 long FXDataTarget::onCmdOption(FXObject*,FXSelector sel,void*){
-  FXint num=((FXint)SELID(sel))-ID_OPTION;
+  FXint num=((FXint)FXSELID(sel))-ID_OPTION;
   switch(type){
     case DT_CHAR:
       *((FXchar*)data)=num;
@@ -181,6 +206,12 @@ long FXDataTarget::onCmdOption(FXObject*,FXSelector sel,void*){
     case DT_UINT:
       *((FXuint*)data)=num;
       break;
+    case DT_LONG:
+      *((FXlong*)data)=num;
+      break;
+    case DT_ULONG:
+      *((FXulong*)data)=num;
+      break;
     case DT_FLOAT:
       *((FXfloat*)data)=(FXfloat)num;
       break;
@@ -189,7 +220,7 @@ long FXDataTarget::onCmdOption(FXObject*,FXSelector sel,void*){
       break;
     }
   if(target){
-    target->handle(this,MKUINT(message,SELTYPE(sel)),data);
+    target->handle(this,FXSEL(FXSELTYPE(sel),message),data);
     }
   return 1;
   }
@@ -197,7 +228,7 @@ long FXDataTarget::onCmdOption(FXObject*,FXSelector sel,void*){
 
 // Check widget whose message id matches
 long FXDataTarget::onUpdOption(FXObject* sender,FXSelector sel,void*){
-  FXint num=((FXint)SELID(sel))-ID_OPTION;
+  FXint num=((FXint)FXSELID(sel))-ID_OPTION;
   FXint i=0;
   switch(type){
     case DT_CHAR:
@@ -218,6 +249,12 @@ long FXDataTarget::onUpdOption(FXObject* sender,FXSelector sel,void*){
     case DT_UINT:
       i=*((FXuint*)data);
       break;
+    case DT_LONG:
+      i=(FXint) *((FXlong*)data);
+      break;
+    case DT_ULONG:
+      i=(FXint) *((FXulong*)data);
+      break;
     case DT_FLOAT:
       i=(FXint) *((FXfloat*)data);
       break;
@@ -226,11 +263,20 @@ long FXDataTarget::onUpdOption(FXObject* sender,FXSelector sel,void*){
       break;
     }
   if(i==num){
-    sender->handle(this,MKUINT(FXWindow::ID_CHECK,SEL_COMMAND),NULL);
+    sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_CHECK),NULL);
     }
   else{
-    sender->handle(this,MKUINT(FXWindow::ID_UNCHECK,SEL_COMMAND),NULL);
+    sender->handle(this,FXSEL(SEL_COMMAND,FXWindow::ID_UNCHECK),NULL);
     }
   return 1;
   }
+
+
+/// Destroy
+FXDataTarget::~FXDataTarget(){
+  target=(FXObject*)-1L;
+  data=(void*)-1L;
+  }
+
+}
 

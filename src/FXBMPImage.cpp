@@ -3,7 +3,7 @@
 *                            B M P   I m a g e   O b j e c t                    *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,15 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXBMPImage.cpp,v 1.13 2002/01/18 22:42:58 jeroen Exp $                   *
+* $Id: FXBMPImage.cpp,v 1.30 2005/01/16 16:06:06 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
+#include "FXMemoryStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
@@ -41,46 +44,52 @@
 
 /*
   Notes:
-  - Use corner color as transparency color, unless override.
   - Only free image if owned!
 */
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
+
+
+// Suggested file extension
+const FXchar FXBMPImage::fileExt[]="bmp";
+
 
 // Object implementation
 FXIMPLEMENT(FXBMPImage,FXImage,NULL,0)
 
 
 // Initialize
-FXBMPImage::FXBMPImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):
-  FXImage(a,NULL,opts&~IMAGE_ALPHA,w,h){
+FXBMPImage::FXBMPImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):FXImage(a,NULL,opts,w,h){
   if(pix){
     FXMemoryStream ms;
-    FXColor clearcolor;
-    ms.open((FXuchar*)pix,FXStreamLoad);
-    fxloadBMP(ms,data,clearcolor,width,height);
-    options|=IMAGE_OWNED;
+    ms.open(FXStreamLoad,(FXuchar*)pix);
+    loadPixels(ms);
     ms.close();
     }
   }
 
 
 // Save pixel data only
-void FXBMPImage::savePixels(FXStream& store) const {
-  FXColor clearcolor=FXRGB(192,192,192);
-  FXASSERT(!(options&IMAGE_ALPHA));
-  fxsaveBMP(store,data,clearcolor,width,height);
+FXbool FXBMPImage::savePixels(FXStream& store) const {
+  if(fxsaveBMP(store,data,width,height)){
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
 // Load pixel data only
-void FXBMPImage::loadPixels(FXStream& store){
-  FXColor clearcolor;
-  if(options&IMAGE_OWNED){FXFREE(&data);}
-  fxloadBMP(store,data,clearcolor,width,height);
-  options&=~IMAGE_ALPHA;
-  options|=IMAGE_OWNED;
+FXbool FXBMPImage::loadPixels(FXStream& store){
+  FXColor *pixels; FXint w,h;
+  if(fxloadBMP(store,pixels,w,h)){
+    setData(pixels,IMAGE_OWNED,w,h);
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
@@ -88,5 +97,4 @@ void FXBMPImage::loadPixels(FXStream& store){
 FXBMPImage::~FXBMPImage(){
   }
 
-
-
+}

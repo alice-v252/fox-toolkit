@@ -3,7 +3,7 @@
 *              F O X   P r i v a t e   I n c l u d e   F i l e s                *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: xincs.h,v 1.34.4.4 2003/05/01 20:22:52 fox Exp $                          *
+* $Id: xincs.h,v 1.65 2005/01/28 23:07:35 fox Exp $                             *
 ********************************************************************************/
 #ifndef XINCS_H
 #define XINCS_H
@@ -27,8 +27,22 @@
 
 ////////////////////  DO NOT INCLUDE THIS PRIVATE HEADER FILE  //////////////////
 
+// Thread safe
+#ifndef _POSIX_PTHREAD_SEMANTICS
+#define _POSIX_PTHREAD_SEMANTICS
+#endif
 
-/************************  Platform  Dependent  Headers  ***********************/
+// GNU extras if we can get them
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+// Use 64-bit files
+#ifndef WIN32
+#ifndef _FILE_OFFSET_BITS
+#define _FILE_OFFSET_BITS 64
+#endif
+#endif
 
 // Basic includes
 #include <stdio.h>
@@ -43,6 +57,7 @@
 #include <time.h>
 #include <ctype.h>
 #include <locale.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -50,13 +65,15 @@
 
 #include <grp.h>
 #include <pwd.h>
-#include <fcntl.h>
-
+#include <sys/ioctl.h>
+#ifdef HAVE_SYS_FILIO_H         // Get FIONREAD on Solaris
+#include <sys/filio.h>
+#endif
 #else
 
-#ifdef _MSC_VER		/* Microsoft Visual C++ */
+#include <io.h>                 // For _access()
+#if defined(_MSC_VER) || defined(__WATCOMC__)		// Microsoft Visual C++ or Watcom C++
 #include <direct.h>
-#include <io.h>		/* for _access() */
 #define stat _stat
 #define lstat _stat
 #define getcwd _getcwd
@@ -71,20 +88,20 @@
 #define execvp _execvp
 #define strdup _strdup
 #endif
-#ifdef __BORLANDC__	/* Borland C++ Builder */
+#ifdef __BORLANDC__	        // Borland C++ Builder
 #include <dir.h>
-#include <io.h>         /* for _access() */
-#if __BORLANDC__ <= 0x0530 /* C++ Builder 3.0 */
+#if __BORLANDC__ <= 0x0530      // C++ Builder 3.0
 #define vsnprintf(a, b, c, d) vsprintf(a, c, d)
 #endif
+#define lstat stat
 #endif
-#ifdef __MINGW32__      /* GCC MingW32 */
+#ifdef __MINGW32__              // GCC MingW32
 #include <direct.h>
 #define vsnprintf _vsnprintf
 #endif
-#ifdef __SC__           /* Digital Mars C++ Compiler */
+#ifdef __SC__                   // Digital Mars C++ Compiler
 #include <direct.h>
-#include <io.h>         /* for _access() */
+#include <io.h>                 // For _access()
 #define vsnprintf _vsnprintf
 #endif
 
@@ -116,8 +133,10 @@
 #endif
 #ifdef HAVE_DIRENT_H
 #include <dirent.h>
+#define NAMLEN(dirent) strlen((dirent)->d_name)
 #else
 #define dirent direct
+#define NAMLEN(dirent) (dirent)->d_namlen
 #ifdef HAVE_SYS_NDIR_H
 #include <sys/ndir.h>
 #endif
@@ -128,10 +147,14 @@
 #include <ndir.h>
 #endif
 #endif
-#ifdef HAVE_XSHM
+#ifdef HAVE_XSHM_H
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #endif
+#ifdef HAVE_MMAP
+#include <sys/mman.h>
+#endif
+
 
 // For thread-safe readdir_r, we sometimes need extra
 // space above and beyond the space for dirent itself
@@ -155,8 +178,8 @@ struct fxdirent : dirent {
 #include <windows.h>
 #ifndef __CYGWIN__
 #include <winsock2.h>
-#endif /* !__CYGWIN__ */
-#include <commctrl.h>   // For _TrackMouseEvent
+#endif
+#include <commctrl.h>           // For _TrackMouseEvent
 
 // X windows includes
 #else
@@ -170,29 +193,50 @@ struct fxdirent : dirent {
 #ifdef HUMMINGBIRD
 #include <X11/XlibXtra.h>
 #endif
-#ifdef HAVE_XSHM
+#ifdef HAVE_XSHM_H
 #include <X11/extensions/XShm.h>
 #endif
-#ifndef XlibSpecificationRelease 	// not defined until X11R5
+#ifdef HAVE_XCURSOR_H
+#include <X11/Xcursor/Xcursor.h>
+#endif
+#ifdef HAVE_XFT_H
+#include <X11/Xft/Xft.h>
+#endif
+#ifdef HAVE_XSHAPE_H
+#include <X11/extensions/shape.h>
+#endif
+#ifdef HAVE_XRANDR_H
+#include <X11/extensions/Xrandr.h>
+#endif
+#ifndef XlibSpecificationRelease        // Not defined until X11R5
 #define NO_XIM
-#elif XlibSpecificationRelease < 6	// need at least Xlib X11R6
+#elif XlibSpecificationRelease < 6      // Need at least Xlib X11R6
 #define NO_XIM
 #endif
 #endif
 
+
 // OpenGL includes
-#ifdef HAVE_OPENGL
+#ifdef HAVE_GL_H
+#ifndef SUN_OGL_NO_VERTEX_MACROS
+#define SUN_OGL_NO_VERTEX_MACROS
+#endif
+#ifndef HPOGL_SUPPRESS_FAST_API
+#define HPOGL_SUPPRESS_FAST_API
+#endif
 #include <GL/gl.h>
+#ifndef WIN32
+#include <GL/glx.h>
+#endif
+#endif
 #ifndef GLAPIENTRY
 #define GLAPIENTRY
 #endif
 #ifndef GLAPI
 #define GLAPI
 #endif
+#ifdef HAVE_GLU_H
 #include <GL/glu.h>
-#ifndef WIN32
-#include <GL/glx.h>
-#endif
 #endif
 
 // Maximum path length
@@ -224,42 +268,74 @@ struct fxdirent : dirent {
 #endif
 #endif
 
+// File open modes on Windows
+#ifdef WIN32
+#if defined(_MSC_VER)
+#define O_APPEND _O_APPEND
+#define O_CREAT  _O_CREAT
+#define O_EXCL   _O_EXCL
+#define O_RDONLY _O_RDONLY
+#define O_RDWR   _O_RDWR
+#define O_TRUNC  _O_TRUNC
+#define O_WRONLY _O_WRONLY
+#define O_BINARY _O_BINARY
+#endif
+#endif
+
+// Some systems don't have it
+#ifndef SEEK_SET
+#define SEEK_SET 0
+#endif
+#ifndef SEEK_CUR
+#define SEEK_CUR 1
+#endif
+#ifndef SEEK_END
+#define SEEK_END 2
+#endif
+
 // Printer stuff
 #ifdef WIN32
 #include <winspool.h>
 #endif
 
 
-// Shared library support
-#ifndef FXAPI
-#ifdef WIN32
-#ifdef FOXDLL
-#ifdef FOXDLL_EXPORTS
-#define FXAPI __declspec(dllexport)
-#else
-#define FXAPI __declspec(dllimport)
-#endif
-#endif
-#endif
-#endif
-
-#ifndef FXAPI
-#define FXAPI
-#endif
-
-/***********************  Platform  Dependent  Typedefs  ***********************/
-
-
-/***********************  Platform  Dependent  Globals  ************************/
-
-
 // Wheel support (OS >= W98, OS>=NT4.0)
 #ifdef WIN32
+
+// Missing wheel message id's
 #ifndef SPI_GETWHEELSCROLLLINES
 #define SPI_GETWHEELSCROLLLINES   104
 #endif
 #ifndef WM_MOUSEWHEEL
 #define WM_MOUSEWHEEL             0x020A
+#endif
+
+// GetSystemMetrics parameters missing in header files
+#ifndef SM_XVIRTUALSCREEN
+#define SM_XVIRTUALSCREEN       76
+#endif
+#ifndef SM_YVIRTUALSCREEN
+#define SM_YVIRTUALSCREEN       77
+#endif
+#ifndef SM_CXVIRTUALSCREEN
+#define SM_CXVIRTUALSCREEN      78
+#endif
+#ifndef SM_CYVIRTUALSCREEN
+#define SM_CYVIRTUALSCREEN      79
+#endif
+#ifndef SM_CMONITORS
+#define SM_CMONITORS            80
+#endif
+#ifndef SM_SAMEDISPLAYFORMAT
+#define SM_SAMEDISPLAYFORMAT    81
+#endif
+
+// Missing in CYGWIN
+#ifndef IMAGE_SUBSYSTEM_NATIVE_WINDOWS
+#define IMAGE_SUBSYSTEM_NATIVE_WINDOWS 8
+#endif
+#ifndef IMAGE_SUBSYSTEM_WINDOWS_CE_GUI
+#define IMAGE_SUBSYSTEM_WINDOWS_CE_GUI 9
 #endif
 #endif
 
@@ -267,7 +343,7 @@ struct fxdirent : dirent {
 // IBM VisualAge for C++ 3.5
 #if defined(__IBMCPP__) && defined(WIN32)
 #include <direct.h>
-#include <io.h>         /* for _access() */
+#include <io.h>         // for _access()
 #define _mkdir(x) mkdir((char *)(x))
 #define _vsnprintf(a, b, c, d) vsprintf(a, c, d)
 #define ICON_SMALL      0

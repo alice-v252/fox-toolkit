@@ -3,7 +3,7 @@
 *                     M a i n   W i n d o w   O b j e c t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMainWindow.cpp,v 1.13 2002/01/18 22:43:01 jeroen Exp $                 *
+* $Id: FXMainWindow.cpp,v 1.28 2005/01/16 16:06:07 fox Exp $                    *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXThread.h"
+#include "FXHash.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -41,43 +43,46 @@
   - allow resize option..
   - Iconified/normal.
   - Want unlimited number of main windows.
+  - Don't call X11/WIN32 unless xid and application is initialized.
 */
+
+
+#define DISPLAY(app) ((Display*)((app)->display))
+
+
+using namespace FX;
 
 /*******************************************************************************/
 
-
-// Map
-FXDEFMAP(FXMainWindow) FXMainWindowMap[]={
-  FXMAPFUNC(SEL_CLOSE,0,FXMainWindow::onClose),
-  };
+namespace FX {
 
 
 // Object implementation
-FXIMPLEMENT(FXMainWindow,FXTopWindow,FXMainWindowMap,ARRAYNUMBER(FXMainWindowMap))
+FXIMPLEMENT(FXMainWindow,FXTopWindow,NULL,0)
 
 
 // Make main window
 FXMainWindow::FXMainWindow(FXApp* a,const FXString& name,FXIcon *ic,FXIcon *mi,FXuint opts,FXint x,FXint y,FXint w,FXint h,FXint pl,FXint pr,FXint pt,FXint pb,FXint hs,FXint vs):
   FXTopWindow(a,name,ic,mi,opts,x,y,w,h,pl,pr,pt,pb,hs,vs){
-  if(getApp()->mainWindow){ fxwarning("Warning: creating multiple main windows\n"); }
-  getApp()->mainWindow=this;
   }
 
 
-// Unless target catches it, close down the app
-long FXMainWindow::onClose(FXObject*,FXSelector,void*){
-
-  // If handled, we're not closing the window after all
-  if(target && target->handle(this,MKUINT(message,SEL_CLOSE),NULL)) return 1;
-
-  // Otherwise, we will quit the application
-  getApp()->handle(this,MKUINT(FXApp::ID_QUIT,SEL_COMMAND),NULL);
-
-  return 1;
+// Create server-side resources
+void FXMainWindow::create(){
+  FXTopWindow::create();
+  if(xid){
+    if(getApp()->isInitialized()){
+#ifndef WIN32
+      // Set the WM_COMMAND hint on non-owned toplevel windows
+      XSetCommand(DISPLAY(getApp()),xid,(char**)getApp()->getArgv(),getApp()->getArgc());
+#endif
+      }
+    }
   }
 
 
 // Destroy
 FXMainWindow::~FXMainWindow(){
-  getApp()->mainWindow=NULL;
   }
+
+}

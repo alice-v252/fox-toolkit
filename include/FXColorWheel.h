@@ -3,7 +3,7 @@
 *                        C o l o r W h e e l   W i d g e t                      *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2001,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 2001,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXColorWheel.h,v 1.15 2002/01/18 22:42:51 jeroen Exp $                   *
+* $Id: FXColorWheel.h,v 1.26 2005/01/16 16:06:06 fox Exp $                      *
 ********************************************************************************/
 #ifndef FXCOLORWHEEL_H
 #define FXCOLORWHEEL_H
@@ -28,14 +28,16 @@
 #include "FXFrame.h"
 #endif
 
+namespace FX {
 
 
 class FXImage;
 
 
 /**
-* A color wheel is a widget which controls a color by means
-* of the hue, saturation, value color specification system.
+* A Color Wheel is a widget which controls the hue and saturation values of a
+* color.  It is most often used together with a Color Bar which controls the
+* brighness.
 */
 class FXAPI FXColorWheel : public FXFrame {
   FXDECLARE(FXColorWheel)
@@ -54,7 +56,6 @@ protected:
   void movespot(FXint x,FXint y);
   FXbool hstoxy(FXint& x,FXint& y,FXfloat h,FXfloat s) const;
   FXbool xytohs(FXfloat& h,FXfloat& s,FXint x,FXint y) const;
-  virtual void layout();
 private:
   FXColorWheel(const FXColorWheel&);
   FXColorWheel &operator=(const FXColorWheel&);
@@ -63,6 +64,11 @@ public:
   long onLeftBtnPress(FXObject*,FXSelector,void*);
   long onLeftBtnRelease(FXObject*,FXSelector,void*);
   long onMotion(FXObject*,FXSelector,void*);
+  long onMouseWheel(FXObject*,FXSelector,void*);
+  long onCmdSetHelp(FXObject*,FXSelector,void*);
+  long onCmdGetHelp(FXObject*,FXSelector,void*);
+  long onCmdSetTip(FXObject*,FXSelector,void*);
+  long onCmdGetTip(FXObject*,FXSelector,void*);
   long onQueryHelp(FXObject*,FXSelector,void*);
   long onQueryTip(FXObject*,FXSelector,void*);
 public:
@@ -75,6 +81,9 @@ public:
 
   /// Detach server-side resources
   virtual void detach();
+
+  /// Perform layout
+  virtual void layout();
 
   /// Return default width
   virtual FXint getDefaultWidth();
@@ -104,13 +113,13 @@ public:
   void setHelpText(const FXString& text);
 
   /// Get status line help text for this color well
-  FXString getHelpText() const { return help; }
+  const FXString& getHelpText() const { return help; }
 
   /// Set tool tip message for this color well
   void setTipText(const FXString& text);
 
   /// Get tool tip message for this color well
-  FXString getTipText() const { return tip; }
+  const FXString& getTipText() const { return tip; }
 
   /// Save color well to a stream
   virtual void save(FXStream& store) const;
@@ -122,5 +131,6 @@ public:
   virtual ~FXColorWheel();
   };
 
+}
 
 #endif

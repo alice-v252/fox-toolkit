@@ -3,7 +3,7 @@
 *                        F r a m e   W i n d o w   O b j e c t                  *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXFrame.cpp,v 1.23 2002/02/02 03:58:46 fox Exp $                         *
+* $Id: FXFrame.cpp,v 1.34 2005/02/03 20:12:46 fox Exp $                         *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -45,8 +47,11 @@
 // Frame styles
 #define FRAME_MASK        (FRAME_SUNKEN|FRAME_RAISED|FRAME_THICK)
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXFrame) FXFrameMap[]={
@@ -105,81 +110,105 @@ void FXFrame::drawBorderRectangle(FXDCWindow& dc,FXint x,FXint y,FXint w,FXint h
 
 
 void FXFrame::drawRaisedRectangle(FXDCWindow& dc,FXint x,FXint y,FXint w,FXint h){
-  dc.setForeground(shadowColor);
-  dc.fillRectangle(x,y+h-1,w,1);
-  dc.fillRectangle(x+w-1,y,1,h);
-  dc.setForeground(hiliteColor);
-  dc.fillRectangle(x,y,w,1);
-  dc.fillRectangle(x,y,1,h);
+  if(0<w && 0<h){
+    dc.setForeground(shadowColor);
+    dc.fillRectangle(x,y+h-1,w,1);
+    dc.fillRectangle(x+w-1,y,1,h);
+    dc.setForeground(hiliteColor);
+    dc.fillRectangle(x,y,w,1);
+    dc.fillRectangle(x,y,1,h);
+    }
   }
 
 
 void FXFrame::drawSunkenRectangle(FXDCWindow& dc,FXint x,FXint y,FXint w,FXint h){
-  dc.setForeground(shadowColor);
-  dc.fillRectangle(x,y,w,1);
-  dc.fillRectangle(x,y,1,h);
-  dc.setForeground(hiliteColor);
-  dc.fillRectangle(x,y+h-1,w,1);
-  dc.fillRectangle(x+w-1,y,1,h);
+  if(0<w && 0<h){
+    dc.setForeground(shadowColor);
+    dc.fillRectangle(x,y,w,1);
+    dc.fillRectangle(x,y,1,h);
+    dc.setForeground(hiliteColor);
+    dc.fillRectangle(x,y+h-1,w,1);
+    dc.fillRectangle(x+w-1,y,1,h);
+    }
   }
 
 
 void FXFrame::drawRidgeRectangle(FXDCWindow& dc,FXint x,FXint y,FXint w,FXint h){
-  dc.setForeground(hiliteColor);
-  dc.fillRectangle(x,y,w,1);
-  dc.fillRectangle(x,y,1,h);
-  dc.fillRectangle(x+1,y+h-2,w-2,1);
-  dc.fillRectangle(x+w-2,y+1,1,h-2);
-  dc.setForeground(shadowColor);
-  dc.fillRectangle(x+1,y+1,w-3,1);
-  dc.fillRectangle(x+1,y+1,1,h-3);
-  dc.fillRectangle(x,y+h-1,w,1);
-  dc.fillRectangle(x+w-1,y,1,h);
+  if(0<w && 0<h){
+    dc.setForeground(hiliteColor);
+    dc.fillRectangle(x,y,w,1);
+    dc.fillRectangle(x,y,1,h);
+    dc.setForeground(shadowColor);
+    dc.fillRectangle(x,y+h-1,w,1);
+    dc.fillRectangle(x+w-1,y,1,h);
+    if(1<w && 1<h){
+      dc.setForeground(hiliteColor);
+      dc.fillRectangle(x+1,y+h-2,w-2,1);
+      dc.fillRectangle(x+w-2,y+1,1,h-2);
+      dc.setForeground(shadowColor);
+      dc.fillRectangle(x+1,y+1,w-3,1);
+      dc.fillRectangle(x+1,y+1,1,h-3);
+      }
+    }
   }
 
 
 void FXFrame::drawGrooveRectangle(FXDCWindow& dc,FXint x,FXint y,FXint w,FXint h){
-  dc.setForeground(shadowColor);
-  dc.fillRectangle(x,y,w,1);
-  dc.fillRectangle(x,y,1,h);
-  dc.fillRectangle(x+1,y+h-2,w-2,1);
-  dc.fillRectangle(x+w-2,y+1,1,h-2);
-  dc.setForeground(hiliteColor);
-  dc.fillRectangle(x+1,y+1,w-3,1);
-  dc.fillRectangle(x+1,y+1,1,h-3);
-  dc.fillRectangle(x,y+h-1,w,1);
-  dc.fillRectangle(x+w-1,y,1,h);
+  if(0<w && 0<h){
+    dc.setForeground(shadowColor);
+    dc.fillRectangle(x,y,w,1);
+    dc.fillRectangle(x,y,1,h);
+    dc.setForeground(hiliteColor);
+    dc.fillRectangle(x,y+h-1,w,1);
+    dc.fillRectangle(x+w-1,y,1,h);
+    if(1<w && 1<h){
+      dc.setForeground(shadowColor);
+      dc.fillRectangle(x+1,y+h-2,w-2,1);
+      dc.fillRectangle(x+w-2,y+1,1,h-2);
+      dc.setForeground(hiliteColor);
+      dc.fillRectangle(x+1,y+1,w-3,1);
+      dc.fillRectangle(x+1,y+1,1,h-3);
+      }
+    }
   }
 
 
 void FXFrame::drawDoubleRaisedRectangle(FXDCWindow& dc,FXint x,FXint y,FXint w,FXint h){
-  dc.setForeground(hiliteColor);
-  dc.fillRectangle(x,y,w-1,1);
-  dc.fillRectangle(x,y,1,h-1);
-  dc.setForeground(baseColor);
-  dc.fillRectangle(x+1,y+1,w-2,1);
-  dc.fillRectangle(x+1,y+1,1,h-2);
-  dc.setForeground(shadowColor);
-  dc.fillRectangle(x+1,y+h-2,w-2,1);
-  dc.fillRectangle(x+w-2,y+1,1,h-1);
-  dc.setForeground(borderColor);
-  dc.fillRectangle(x,y+h-1,w,1);
-  dc.fillRectangle(x+w-1,y,1,h);
+  if(0<w && 0<h){
+    dc.setForeground(borderColor);
+    dc.fillRectangle(x,y+h-1,w,1);
+    dc.fillRectangle(x+w-1,y,1,h);
+    dc.setForeground(hiliteColor);
+    dc.fillRectangle(x,y,w-1,1);
+    dc.fillRectangle(x,y,1,h-1);
+    if(1<w && 1<h){
+      dc.setForeground(baseColor);
+      dc.fillRectangle(x+1,y+1,w-2,1);
+      dc.fillRectangle(x+1,y+1,1,h-2);
+      dc.setForeground(shadowColor);
+      dc.fillRectangle(x+1,y+h-2,w-2,1);
+      dc.fillRectangle(x+w-2,y+1,1,h-2);
+      }
+    }
   }
 
 void FXFrame::drawDoubleSunkenRectangle(FXDCWindow& dc,FXint x,FXint y,FXint w,FXint h){
-  dc.setForeground(shadowColor);
-  dc.fillRectangle(x,y,w-1,1);
-  dc.fillRectangle(x,y,1,h-1);
-  dc.setForeground(borderColor);
-  dc.fillRectangle(x+1,y+1,w-3,1);
-  dc.fillRectangle(x+1,y+1,1,h-3);
-  dc.setForeground(hiliteColor);
-  dc.fillRectangle(x,y+h-1,w,1);
-  dc.fillRectangle(x+w-1,y,1,h);
-  dc.setForeground(baseColor);
-  dc.fillRectangle(x+1,y+h-2,w-2,1);
-  dc.fillRectangle(x+w-2,y+1,1,h-2);
+  if(0<w && 0<h){
+    dc.setForeground(hiliteColor);
+    dc.fillRectangle(x,y+h-1,w,1);
+    dc.fillRectangle(x+w-1,y,1,h);
+    dc.setForeground(shadowColor);
+    dc.fillRectangle(x,y,w-1,1);
+    dc.fillRectangle(x,y,1,h-1);
+    if(1<w && 1<h){
+      dc.setForeground(borderColor);
+      dc.fillRectangle(x+1,y+1,w-3,1);
+      dc.fillRectangle(x+1,y+1,1,h-3);
+      dc.setForeground(baseColor);
+      dc.fillRectangle(x+1,y+h-2,w-2,1);
+      dc.fillRectangle(x+w-2,y+1,1,h-2);
+      }
+    }
   }
 
 
@@ -199,8 +228,8 @@ void FXFrame::drawFrame(FXDCWindow& dc,FXint x,FXint y,FXint w,FXint h){
 
 // Handle repaint
 long FXFrame::onPaint(FXObject*,FXSelector,void* ptr){
-  FXEvent *ev=(FXEvent*)ptr;
-  FXDCWindow dc(this,ev);
+  FXEvent* event=static_cast<FXEvent*>(ptr);
+  FXDCWindow dc(this,event);
   dc.setForeground(backColor);
   dc.fillRectangle(border,border,width-(border<<1),height-(border<<1));
   drawFrame(dc,0,0,width,height);
@@ -335,8 +364,5 @@ void FXFrame::load(FXStream& store){
   }
 
 
-// Destructor
-FXFrame::~FXFrame(){
-  }
-
+}
 

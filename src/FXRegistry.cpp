@@ -3,7 +3,7 @@
 *                           R e g i s t r y   C l a s s                         *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,12 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXRegistry.cpp,v 1.32.4.1 2003/05/16 10:54:30 fox Exp $                   *
+* $Id: FXRegistry.cpp,v 1.43 2005/01/16 16:06:07 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
 #include "FXStream.h"
 #include "FXObject.h"
 #include "FXString.h"
@@ -107,7 +108,11 @@
 
 #define DESKTOP        "Desktop"
 
+using namespace FX;
+
 /*******************************************************************************/
+
+namespace FX {
 
 // Object implementation
 FXIMPLEMENT(FXRegistry,FXSettings,NULL,0)
@@ -159,7 +164,7 @@ FXbool FXRegistry::read(){
       }
 
     // Get path to per-user settings directory
-    dirname=FXFile::getHomeDirectory()+PATHSEPSTRING ".foxrc";
+    dirname=FXFile::getEnvironment("USERPROFILE")+PATHSEPSTRING "foxrc";
 
     // Then read per-user settings; overriding system-wide ones
     if(readFromDir(dirname,TRUE)) ok=TRUE;
@@ -372,7 +377,7 @@ FXbool FXRegistry::write(){
       FXTRACE((100,"Writing to file based settings database.\n"));
 
       // Changes written only in the per-user registry
-      pathname=FXFile::getHomeDirectory()+PATHSEPSTRING ".foxrc";
+      pathname=FXFile::getEnvironment("USERPROFILE")+PATHSEPSTRING "foxrc";
 
       // If this directory does not exist, make it
       if(!FXFile::exists(pathname)){
@@ -543,28 +548,19 @@ FXbool FXRegistry::writeToRegistry(void* hRootKey){
 // Write to registry group
 FXbool FXRegistry::writeToRegistryGroup(void* org,const char* groupname){
   FXchar section[MAXNAME];
-  DWORD sectionsize,sectionindex,disp,s,e;
+  DWORD sectionsize,sectionindex,disp;
   HKEY groupkey,sectionkey;
+  FXint s,e;
   FILETIME writetime;
   FXStringDict *group;
   if(RegCreateKeyEx((HKEY)org,groupname,0,REG_NONE,REG_OPTION_NON_VOLATILE,KEY_WRITE|KEY_READ,NULL,&groupkey,&disp)==ERROR_SUCCESS){
 
-/*
-    // First, purge all existing sections
-    sectionindex=0;
-    sectionsize=MAXNAME;
-    while(RegEnumKeyEx(groupkey,sectionindex,section,&sectionsize,NULL,NULL,NULL,&writetime)==ERROR_SUCCESS){
-      RegDeleteKey(groupkey,section);
-      sectionsize=MAXNAME;
-      sectionindex++;
-      }
-*/
     // First, purge all existing sections
     while(1){
       sectionindex=0;
       sectionsize=MAXNAME;
       if(RegEnumKeyEx(groupkey,sectionindex,section,&sectionsize,NULL,NULL,NULL,&writetime)!=ERROR_SUCCESS) break;
-      RegDeleteKey(groupkey,section);
+      if(RegDeleteKey(groupkey,section)!=ERROR_SUCCESS) break;
       }
 
     // Dump the registry, writing only marked entries
@@ -600,3 +596,4 @@ x:    s=next(s);
 
 #endif
 
+}

@@ -3,7 +3,7 @@
 *                     S h e l l   W i n d o w   W i d g e t                     *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXShell.h,v 1.23 2002/01/18 22:42:54 jeroen Exp $                        *
+* $Id: FXShell.h,v 1.30 2005/01/16 16:06:06 fox Exp $                           *
 ********************************************************************************/
 #ifndef FXSHELL_H
 #define FXSHELL_H
@@ -28,9 +28,13 @@
 #include "FXComposite.h"
 #endif
 
+namespace FX {
 
 
-/// A child of the Root window
+/**
+* The Shell widget is used as the base class for top level windows, i.e.
+* windows which are direct children of the root window.
+*/
 class FXAPI FXShell : public FXComposite {
   FXDECLARE(FXShell)
 protected:
@@ -41,11 +45,17 @@ private:
   FXShell(const FXShell&);
   FXShell &operator=(const FXShell&);
 public:
+  long onLayout(FXObject*,FXSelector,void*);
   long onConfigure(FXObject*,FXSelector,void*);
   long onKeyPress(FXObject*,FXSelector,void*);
   long onKeyRelease(FXObject*,FXSelector,void*);
   long onFocusNext(FXObject*,FXSelector,void*);
   long onFocusPrev(FXObject*,FXSelector,void*);
+public:
+  enum {
+    ID_LAYOUT=FXComposite::ID_LAST,
+    ID_LAST
+    };
 public:
 
   /// Create server-side resources
@@ -64,5 +74,6 @@ public:
   virtual ~FXShell();
   };
 
+}
 
 #endif

@@ -3,7 +3,7 @@
 *                           T a b  B a r   W i d g e t                          *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXTabBar.h,v 1.3 2002/01/18 22:42:55 jeroen Exp $                        *
+* $Id: FXTabBar.h,v 1.10 2005/01/16 16:06:06 fox Exp $                           *
 ********************************************************************************/
 #ifndef FXTABBAR_H
 #define FXTABBAR_H
@@ -28,15 +28,17 @@
 #include "FXPacker.h"
 #endif
 
+namespace FX {
 
-// Tab Book options
+
+/// Tab Book options
 enum {
-  TABBOOK_TOPTABS    = 0,                                   // Tabs on top (default)
-  TABBOOK_BOTTOMTABS = 0x00020000,                          // Tabs on bottom
-  TABBOOK_SIDEWAYS   = 0x00040000,                          // Tabs on left
-  TABBOOK_LEFTTABS   = TABBOOK_SIDEWAYS|TABBOOK_TOPTABS,    // Tabs on left
-  TABBOOK_RIGHTTABS  = TABBOOK_SIDEWAYS|TABBOOK_BOTTOMTABS, // Tabs on right
-  TABBOOK_NORMAL     = TABBOOK_TOPTABS
+  TABBOOK_TOPTABS    = 0,                                   /// Tabs on top (default)
+  TABBOOK_BOTTOMTABS = 0x00020000,                          /// Tabs on bottom
+  TABBOOK_SIDEWAYS   = 0x00040000,                          /// Tabs on left
+  TABBOOK_LEFTTABS   = TABBOOK_SIDEWAYS|TABBOOK_TOPTABS,    /// Tabs on left
+  TABBOOK_RIGHTTABS  = TABBOOK_SIDEWAYS|TABBOOK_BOTTOMTABS, /// Tabs on right
+  TABBOOK_NORMAL     = TABBOOK_TOPTABS                      /// Normal tabs
   };
 
 
@@ -44,17 +46,16 @@ enum {
 /**
 * The tab bar layout manager arranges tab items side by side,
 * and raises the active tab item above the neighboring tab items.
-* The tab bar can be have the tab items on the top or
-* bottom for horizontal arrangement, or on the left or right
-* for vertical arrangement.
+* In a the horizontal arrangement, the tab bar can have the tab
+* items on the top or on the bottom.  In the vertical arrangement,
+* the tabs can be on the left or on the right.
 */
 class FXAPI FXTabBar : public FXPacker {
   FXDECLARE(FXTabBar)
 protected:
-  FXint current;
+  FXint current;        // Current tab index
 protected:
   FXTabBar(){}
-  virtual void layout();
 private:
   FXTabBar(const FXTabBar&);
   FXTabBar& operator=(const FXTabBar&);
@@ -99,6 +100,9 @@ public:
   /// Return default height
   virtual FXint getDefaultHeight();
 
+  /// Perform layout
+  virtual void layout();
+
   /**
   * Change currently active tab item;
   * this raises the active tab item slightly above the neighboring
@@ -122,6 +126,6 @@ public:
   virtual void load(FXStream& store);
   };
 
-
+}
 
 #endif

@@ -3,7 +3,7 @@
 *                            W i n d o w   O b j e c t                          *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXWindow.h,v 1.80 2002/01/18 22:42:55 jeroen Exp $                       *
+* $Id: FXWindow.h,v 1.130 2005/02/02 16:37:40 fox Exp $                         *
 ********************************************************************************/
 #ifndef FXWINDOW_H
 #define FXWINDOW_H
@@ -28,6 +28,8 @@
 #include "FXDrawable.h"
 #endif
 
+
+namespace FX {
 
 
 /// Layout hints for child widgets
@@ -47,14 +49,16 @@ enum {
   LAYOUT_BOTTOM      = 0x00000010,                          /// Stick on bottom
   LAYOUT_CENTER_Y    = 0x00000020,                          /// Center vertically
   LAYOUT_FIX_Y       = LAYOUT_BOTTOM|LAYOUT_CENTER_Y,       /// Y fixed
-  LAYOUT_RESERVED_1  = 0x00000040,
-  LAYOUT_RESERVED_2  = 0x00000080,
+  LAYOUT_DOCK_SAME   = 0,                                   /// Dock on same galley if it fits
+  LAYOUT_DOCK_NEXT   = 0x00000040,                          /// Dock on next galley
+  LAYOUT_RESERVED_1  = 0x00000080,
   LAYOUT_FIX_WIDTH   = 0x00000100,                          /// Width fixed
   LAYOUT_FIX_HEIGHT  = 0x00000200,                          /// height fixed
   LAYOUT_MIN_WIDTH   = 0,                                   /// Minimum width is the default
   LAYOUT_MIN_HEIGHT  = 0,                                   /// Minimum height is the default
   LAYOUT_FILL_X      = 0x00000400,                          /// Stretch or shrink horizontally
   LAYOUT_FILL_Y      = 0x00000800,                          /// Stretch or shrink vertically
+  LAYOUT_FILL        = LAYOUT_FILL_X|LAYOUT_FILL_Y,         /// Stretch or shrink in both directions
   LAYOUT_EXPLICIT    = LAYOUT_FIX_X|LAYOUT_FIX_Y|LAYOUT_FIX_WIDTH|LAYOUT_FIX_HEIGHT   /// Explicit placement
   };
 
@@ -80,9 +84,12 @@ enum {
   };
 
 
+class FXIcon;
+class FXBitmap;
 class FXCursor;
-class FXAccelTable;
+class FXRegion;
 class FXComposite;
+class FXAccelTable;
 
 
 /// Base class for all windows
@@ -106,17 +113,25 @@ protected:
   FXint         xpos;                   // Window X Position
   FXint         ypos;                   // Window Y Position
   FXColor       backColor;              // Window background color
+  FXString      tag;                    // Help tag
   FXuint        flags;                  // Window state flags
   FXuint        options;                // Window options
+private:
+  static FXint  windowCount;            // Number of windows
 public:
-
-  // Common DND types
   static FXDragType deleteType;         // Delete request
   static FXDragType textType;           // Ascii text request
-  static FXDragType stringType;         // Clipboard text type (pre-registered)
   static FXDragType colorType;          // Color
   static FXDragType urilistType;        // URI List
-
+  static const FXDragType stringType;   // Clipboard text type (pre-registered)
+  static const FXDragType imageType;    // Clipboard image type (pre-registered)
+protected:
+  FXWindow();
+  FXWindow(FXApp* a,FXVisual *vis);
+  FXWindow(FXApp* a,FXWindow* own,FXuint opts,FXint x,FXint y,FXint w,FXint h);
+  static FXWindow* findDefault(FXWindow* window);
+  static FXWindow* findInitial(FXWindow* window);
+  virtual FXbool doesOverrideRedirect() const;
 protected:
 #ifdef WIN32
   virtual FXID GetDC() const;
@@ -126,19 +141,9 @@ protected:
   void addColormapWindows();
   void remColormapWindows();
 #endif
-
-protected:
-  FXWindow();
-  FXWindow(FXApp* a,FXVisual *vis);
-  FXWindow(FXApp* a,FXWindow* own,FXuint opts,FXint x,FXint y,FXint w,FXint h);
-  static FXWindow* findDefault(FXWindow* window);
-  static FXWindow* findInitial(FXWindow* window);
-  virtual FXbool doesOverrideRedirect() const;
-  virtual void layout();
 private:
   FXWindow(const FXWindow&);
   FXWindow& operator=(const FXWindow&);
-
 protected:
 
   // Window state flags
@@ -164,7 +169,8 @@ protected:
     FLAG_TRYDRAG      = 0x00040000,     // Tentative drag mode
     FLAG_DODRAG       = 0x00080000,     // Doing drag mode
     FLAG_SCROLLINSIDE = 0x00100000,     // Scroll only when inside
-    FLAG_SCROLLING    = 0x00200000      // Right mouse scrolling
+    FLAG_SCROLLING    = 0x00200000,     // Right mouse scrolling
+    FLAG_OWNED        = 0x00400000      // Window handle owned by widget
     };
 
 public:
@@ -206,6 +212,8 @@ public:
   long onDNDMotion(FXObject*,FXSelector,void*);
   long onDNDDrop(FXObject*,FXSelector,void*);
   long onDNDRequest(FXObject*,FXSelector,void*);
+  long onQueryHelp(FXObject*,FXSelector,void*);
+  long onQueryTip(FXObject*,FXSelector,void*);
   long onCmdShow(FXObject*,FXSelector,void*);
   long onCmdHide(FXObject*,FXSelector,void*);
   long onUpdToggleShown(FXObject*,FXSelector,void*);
@@ -214,6 +222,8 @@ public:
   long onCmdLower(FXObject*,FXSelector,void*);
   long onCmdEnable(FXObject*,FXSelector,void*);
   long onCmdDisable(FXObject*,FXSelector,void*);
+  long onUpdToggleEnabled(FXObject*,FXSelector,void*);
+  long onCmdToggleEnabled(FXObject*,FXSelector,void*);
   long onCmdUpdate(FXObject*,FXSelector,void*);
   long onUpdYes(FXObject*,FXSelector,void*);
   long onCmdDelete(FXObject*,FXSelector,void*);
@@ -223,34 +233,40 @@ public:
   // Message ID's common to most Windows
   enum {
     ID_NONE,
-    ID_HIDE,
-    ID_SHOW,
+    ID_HIDE,            // ID_HIDE+FALSE
+    ID_SHOW,            // ID_HIDE+TRUE
     ID_TOGGLESHOWN,
     ID_LOWER,
     ID_RAISE,
     ID_DELETE,
-    ID_DISABLE,
-    ID_ENABLE,
-    ID_UNCHECK,
-    ID_CHECK,
-    ID_UNKNOWN,
+    ID_DISABLE,         // ID_DISABLE+FALSE
+    ID_ENABLE,          // ID_DISABLE+TRUE
+    ID_TOGGLEENABLED,
+    ID_UNCHECK,         // ID_UNCHECK+FALSE
+    ID_CHECK,           // ID_UNCHECK+TRUE
+    ID_UNKNOWN,         // ID_UNCHECK+MAYBE
     ID_UPDATE,
     ID_AUTOSCROLL,
+    ID_TIPTIMER,
     ID_HSCROLLED,
     ID_VSCROLLED,
     ID_SETVALUE,
     ID_SETINTVALUE,
     ID_SETREALVALUE,
     ID_SETSTRINGVALUE,
+    ID_SETICONVALUE,
     ID_SETINTRANGE,
     ID_SETREALRANGE,
     ID_GETINTVALUE,
     ID_GETREALVALUE,
     ID_GETSTRINGVALUE,
+    ID_GETICONVALUE,
     ID_GETINTRANGE,
     ID_GETREALRANGE,
-    ID_QUERY_TIP,
-    ID_QUERY_HELP,
+    ID_SETHELPSTRING,
+    ID_GETHELPSTRING,
+    ID_SETTIPSTRING,
+    ID_GETTIPSTRING,
     ID_QUERY_MENU,
     ID_HOTKEY,
     ID_ACCEL,
@@ -270,8 +286,6 @@ public:
     ID_MDI_MENUCLOSE,
     ID_MDI_NEXT,
     ID_MDI_PREV,
-    ID_CLOSE_DOCUMENT,
-    ID_CLOSE_ALL_DOCUMENTS,
     ID_LAST
     };
 
@@ -381,13 +395,22 @@ public:
   /// Remove a hot key
   void remHotKey(FXHotKey code);
 
+  /// Change help tag for this widget
+  void setHelpTag(const FXString&  text){ tag=text; }
+
+  /// Get the help tag for this widget
+  const FXString& getHelpTag() const { return tag; }
+
   /// Return true if window is a shell window
   FXbool isShell() const;
 
-  /// Return true if specified window is this window's parent
+  /// Return true if specified window is owned by this window
+  FXbool isOwnerOf(const FXWindow* window) const;
+
+  /// Return true if specified window is ancestor of this window
   FXbool isChildOf(const FXWindow* window) const;
 
-  /// Return true if specified window is a child of this window
+  /// Return true if this window contains child in its subtree
   FXbool containsChild(const FXWindow* child) const;
 
   /// Return the child window at specified coordinates
@@ -410,6 +433,15 @@ public:
 
   /// Return the common ancestor of window a and window b
   static FXWindow* commonAncestor(FXWindow* a,FXWindow* b);
+
+  /// Return TRUE if sibling a <= sibling b in list
+  static FXbool before(const FXWindow *a,const FXWindow* b);
+
+  /// Return TRUE if sibling a >= sibling b in list
+  static FXbool after(const FXWindow *a,const FXWindow* b);
+
+  /// Get number of existing windows
+  static FXint getWindowCount(){ return windowCount; }
 
   /// Set the default cursor for this window
   void setDefaultCursor(FXCursor* cur);
@@ -440,12 +472,18 @@ public:
 
   /// Return true if this window has the focus
   FXbool hasFocus() const;
+  
+  /// Return true if this window is in focus chain
+  FXbool inFocusChain() const;
 
   /// Move the focus to this window
   virtual void setFocus();
 
   /// Remove the focus from this window
   virtual void killFocus();
+
+  /// Notification that focus moved to new child
+  virtual void changeFocus(FXWindow *child);
 
   /**
   * This changes the default window which responds to the Return
@@ -474,11 +512,26 @@ public:
   /// Create all of the server-side resources for this window
   virtual void create();
 
+  /// Attach foreign window handle to this window
+  virtual void attach(FXID w);
+
   /// Detach the server-side resources for this window
   virtual void detach();
 
   /// Destroy the server-side resources for this window
   virtual void destroy();
+
+  /// Set window shape by means of region
+  virtual void setShape(const FXRegion& region);
+
+  /// Set window shape by means of bitmap
+  virtual void setShape(FXBitmap* bitmap);
+
+  /// Set window shape by means of icon
+  virtual void setShape(FXIcon* icon);
+
+  /// Clear window shape
+  virtual void clearShape();
 
   /// Raise this window to the top of the stacking order
   virtual void raise();
@@ -495,29 +548,32 @@ public:
   /// Move and resize this window in the parent's coordinates
   virtual void position(FXint x,FXint y,FXint w,FXint h);
 
-  /// Mark this window's layout as dirty
+  /// Mark this window's layout as dirty for later layout
   virtual void recalc();
+
+  /// Perform layout immediately
+  virtual void layout();
 
   /// Force a GUI update of this window and its children
   void forceRefresh();
 
-  /// Change the parent for this window
-  virtual void reparent(FXWindow* newparent);
+  /// Reparent this window under new father before other
+  virtual void reparent(FXWindow* father,FXWindow *other=NULL);
 
   /// Scroll rectangle x,y,w,h by a shift of dx,dy
-  void scroll(FXint x,FXint y,FXint w,FXint h,FXint dx,FXint dy);
+  void scroll(FXint x,FXint y,FXint w,FXint h,FXint dx,FXint dy) const;
 
-  /// Mark the specified rectangle dirty, i.e. to be repainted
-  void update(FXint x,FXint y,FXint w,FXint h);
+  /// Mark the specified rectangle to be repainted later
+  void update(FXint x,FXint y,FXint w,FXint h) const;
 
-  /// Mark the entire window client area dirty
-  void update();
+  /// Mark the entire window to be repainted later
+  void update() const;
 
-  /// If marked but not yet painted, paint the given area
-  void repaint(FXint x,FXint y,FXint w,FXint h);
+  /// If marked but not yet painted, paint the given rectangle now
+  void repaint(FXint x,FXint y,FXint w,FXint h) const;
 
-  /// If marked but not yet painted, paint the entire window
-  void repaint();
+  /// If marked but not yet painted, paint the window now
+  void repaint() const;
 
   /**
   * Grab the mouse to this window; future mouse events will be
@@ -594,8 +650,11 @@ public:
   */
   FXbool handleDrag(FXint x,FXint y,FXDragAction action=DRAG_COPY);
 
-  /// Terminate the drag operation with or without actually dropping the data
-  FXbool endDrag(FXbool drop=TRUE);
+  /**
+  * Terminate the drag operation with or without actually dropping the data
+  * Returns the action performed by the target
+  */
+  FXDragAction endDrag(FXbool drop=TRUE);
 
   /// Return true if this window is the target of a drop
   FXbool isDropTarget() const;
@@ -604,25 +663,25 @@ public:
   * When being dragged over, indicate that no further SEL_DND_MOTION messages
   * are required while the cursor is inside the given rectangle
   */
-  void setDragRectangle(FXint x,FXint y,FXint w,FXint h,FXbool wantupdates=TRUE);
+  void setDragRectangle(FXint x,FXint y,FXint w,FXint h,FXbool wantupdates=TRUE) const;
 
   /**
   * When being dragged over, indicate we want to receive SEL_DND_MOTION messages
   * every time the cursor moves
   */
-  void clearDragRectangle();
+  void clearDragRectangle() const;
 
   /// When being dragged over, indicate acceptance or rejection of the dragged data
-  void acceptDrop(FXDragAction action=DRAG_ACCEPT);
+  void acceptDrop(FXDragAction action=DRAG_ACCEPT) const;
 
   /// The target accepted our drop
   FXDragAction didAccept() const;
 
   /// When being dragged over, inquire the drag types which are being offered
-  FXbool inquireDNDTypes(FXDNDOrigin origin,FXDragType*& types,FXuint& numtypes);
+  FXbool inquireDNDTypes(FXDNDOrigin origin,FXDragType*& types,FXuint& numtypes) const;
 
   /// When being dragged over, return true if we are offered the given drag type
-  FXbool offeredDNDType(FXDNDOrigin origin,FXDragType type);
+  FXbool offeredDNDType(FXDNDOrigin origin,FXDragType type) const;
 
   /// When being dragged over, return the drag action
   FXDragAction inquireDNDAction() const;
@@ -631,13 +690,13 @@ public:
   * Set DND data; the array must be allocated with FXMALLOC and ownership is
   * transferred to the system
   */
-  FXbool setDNDData(FXDNDOrigin origin,FXDragType type,FXuchar* data,FXuint size);
+  FXbool setDNDData(FXDNDOrigin origin,FXDragType type,FXuchar* data,FXuint size) const;
 
   /**
   * Get DND data; the caller becomes the owner of the array and must free it
   * with FXFREE
   */
-  FXbool getDNDData(FXDNDOrigin origin,FXDragType type,FXuchar*& data,FXuint& size);
+  FXbool getDNDData(FXDNDOrigin origin,FXDragType type,FXuchar*& data,FXuint& size) const;
 
   /// Return true if window logically contains the given point
   virtual FXbool contains(FXint parentx,FXint parenty) const;
@@ -654,12 +713,6 @@ public:
   /// Get background color
   FXColor getBackColor() const { return backColor; }
 
-  /// Relink this window before sibling in the window list
-  void linkBefore(FXWindow* sibling);
-
-  /// Relink this window after sibling in the window list
-  void linkAfter(FXWindow* sibling);
-
   virtual FXbool doesSaveUnder() const;
 
   /// Save window to stream
@@ -672,5 +725,6 @@ public:
   virtual ~FXWindow();
   };
 
+}
 
 #endif

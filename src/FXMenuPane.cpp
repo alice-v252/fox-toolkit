@@ -3,7 +3,7 @@
 *                        M e n u   P a n e   W i d g e t                        *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMenuPane.cpp,v 1.10 2002/01/18 22:43:01 jeroen Exp $                    *
+* $Id: FXMenuPane.cpp,v 1.19 2005/01/16 16:06:07 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -44,9 +46,11 @@
   - Should FXPopup still exist?
 */
 
+using namespace FX;
 
 /*******************************************************************************/
 
+namespace FX {
 
 // Object implementation
 FXIMPLEMENT(FXMenuPane,FXPopup,NULL,0)
@@ -73,3 +77,4 @@ FXbool FXMenuPane::contains(FXint parentx,FXint parenty) const {
   return 0;
   }
 
+}

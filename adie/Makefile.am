@@ -4,10 +4,12 @@ CXXFLAGS = @CXXFLAGS@ @X_CFLAGS@
 INCLUDES = -I$(top_srcdir)/include -I$(top_builddir)/include
 RESWRAP  = $(top_builddir)/utils/reswrap
 SUFFIXES = .gif .bmp
-LDADD = ../src/libFOX.la -lm
+LDADD = ../src/libFOX-1.4.la -lm
 
 
 bin_PROGRAMS = adie
+
+bin_SCRIPTS = Adie.stx
 
 man_MANS = adie.1
 
@@ -23,6 +25,7 @@ colors_gif.gif \
 copy_gif.gif \
 cut_gif.gif \
 delete_gif.gif \
+delimit_gif.gif \
 fonts_gif.gif \
 help_gif.gif \
 indent_gif.gif \
@@ -52,20 +55,25 @@ undo_gif.gif
 
 
 adie_SOURCES = \
-icons.h \
-icons.cpp \
-help.h \
-help.cpp \
 Adie.h \
 Adie.cpp \
+Commands.cpp \
+Commands.h \
+help.h \
+help.cpp \
 HelpWindow.h \
 HelpWindow.cpp \
 Hilite.h \
 Hilite.cpp \
+icons.h \
+icons.cpp \
+main.cpp \
+parsesyntax.cpp \
 Preferences.h \
 Preferences.cpp \
-Commands.cpp \
-Commands.h \
+TextWindow.h \
+TextWindow.cpp \
+LICENSE \
 $(ICONS)
 
 
@@ -84,8 +92,8 @@ CLEANFILES = icons.h icons.cpp
 
 
 EXTRA_DIST = $(man_MANS) \
-             Adie_sample \
-             Makefile.bc \
-             Makefile.icc \
-             Makefile.dmc
+Adie.stx \
+Makefile.bc \
+Makefile.wc \
+Makefile.dmc
 

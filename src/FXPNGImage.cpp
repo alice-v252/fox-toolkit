@@ -3,7 +3,7 @@
 *                          P N G   I m a g e   O b j e c t                      *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,15 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXPNGImage.cpp,v 1.14 2002/01/18 22:43:01 jeroen Exp $                   *
+* $Id: FXPNGImage.cpp,v 1.33 2005/01/16 16:06:07 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
+#include "FXMemoryStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
@@ -37,49 +40,64 @@
 
 /*
   Notes:
-  - FXPNGImage has an alpha channel
+  - FXPNGImage has an alpha channel.
 */
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
+
+
+// Suggested file extension
+const FXchar FXPNGImage::fileExt[]="png";
+
 
 // Object implementation
 FXIMPLEMENT(FXPNGImage,FXImage,NULL,0)
 
 
+#ifdef HAVE_PNG_H
+const FXbool FXPNGImage::supported=TRUE;
+#else
+const FXbool FXPNGImage::supported=FALSE;
+#endif
+
+
 // Initialize
-FXPNGImage::FXPNGImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):
-  FXImage(a,NULL,opts|IMAGE_ALPHA,w,h){
+FXPNGImage::FXPNGImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):FXImage(a,NULL,opts,w,h){
   if(pix){
     FXMemoryStream ms;
-    FXColor clearcolor;
-    ms.open((FXuchar*)pix,FXStreamLoad);
-    fxloadPNG(ms,data,clearcolor,width,height);
-    options|=IMAGE_OWNED;
+    ms.open(FXStreamLoad,(FXuchar*)pix);
+    loadPixels(ms);
     ms.close();
     }
   }
 
 
 // Save the pixels only
-void FXPNGImage::savePixels(FXStream& store) const {
-  FXColor clearcolor=FXRGB(192,192,192);
-  FXASSERT(options&IMAGE_ALPHA);
-  fxsavePNG(store,data,clearcolor,width,height);
+FXbool FXPNGImage::savePixels(FXStream& store) const {
+  if(fxsavePNG(store,data,width,height)){
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
-
 // Load pixels only
-void FXPNGImage::loadPixels(FXStream& store){
-  FXColor clearcolor;
-  if(options&IMAGE_OWNED){FXFREE(&data);}
-  fxloadPNG(store,data,clearcolor,width,height);
-  options|=IMAGE_ALPHA;
-  options|=IMAGE_OWNED;
+FXbool FXPNGImage::loadPixels(FXStream& store){
+  FXColor *pixels; FXint w,h;
+  if(fxloadPNG(store,pixels,w,h)){
+    setData(pixels,IMAGE_OWNED,w,h);
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
 // Clean up
 FXPNGImage::~FXPNGImage(){
   }
+
+}

@@ -3,7 +3,7 @@
 *                   C a n v a s   W i n d o w   O b j e c t                     *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXCanvas.cpp,v 1.20 2002/01/18 22:42:58 jeroen Exp $                     *
+* $Id: FXCanvas.cpp,v 1.31 2005/01/16 16:06:06 fox Exp $                        *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -34,16 +36,16 @@
 #include "FXApp.h"
 #include "FXCanvas.h"
 
+using namespace FX;
 
 
 /*******************************************************************************/
 
+namespace FX {
+
 // Map
 FXDEFMAP(FXCanvas) FXCanvasMap[]={
-  FXMAPFUNC(SEL_PAINT,0,FXCanvas::onPaint),
-  FXMAPFUNC(SEL_MOTION,0,FXCanvas::onMotion),
-  FXMAPFUNC(SEL_KEYPRESS,0,FXCanvas::onKeyPress),
-  FXMAPFUNC(SEL_KEYRELEASE,0,FXCanvas::onKeyRelease),
+  FXMAPFUNC(SEL_PAINT,0,FXCanvas::onPaint)
   };
 
 
@@ -74,25 +76,8 @@ FXbool FXCanvas::canFocus() const { return TRUE; }
 
 // Canvas is an object drawn by another
 long FXCanvas::onPaint(FXObject*,FXSelector,void* ptr){
-  return target && target->handle(this,MKUINT(message,SEL_PAINT),ptr);
+  return target && target->handle(this,FXSEL(SEL_PAINT,message),ptr);
   }
 
 
-// Mouse moved
-long FXCanvas::onMotion(FXObject*,FXSelector,void* ptr){
-  return isEnabled() && target && target->handle(this,MKUINT(message,SEL_MOTION),ptr);
-  }
-
-
-// Handle keyboard press/release
-long FXCanvas::onKeyPress(FXObject*,FXSelector,void* ptr){
-  flags&=~FLAG_TIP;
-  return isEnabled() && target && target->handle(this,MKUINT(message,SEL_KEYPRESS),ptr);
-  }
-
-
-long FXCanvas::onKeyRelease(FXObject*,FXSelector,void* ptr){
-  return isEnabled() && target && target->handle(this,MKUINT(message,SEL_KEYRELEASE),ptr);
-  }
-
-
+}

@@ -3,7 +3,7 @@
 *                     A p p l i c a t i o n   O b j e c t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXApp.h,v 1.135 2002/01/18 22:42:51 jeroen Exp $                         *
+* $Id: FXApp.h,v 1.195 2005/02/04 03:41:00 fox Exp $                            *
 ********************************************************************************/
 #ifndef FXAPP_H
 #define FXAPP_H
@@ -28,6 +28,7 @@
 #include "FXObject.h"
 #endif
 
+namespace FX {
 
 
 // Forward declarations
@@ -37,6 +38,7 @@ class FXBitmap;
 class FXCursor;
 class FXRootWindow;
 class FXMainWindow;
+class FXPopup;
 class FXFont;
 class FXDC;
 class FXDCWindow;
@@ -97,6 +99,8 @@ enum FXDefaultCursor {
   DEF_CORNERNW_CURSOR,                  /// North-west cursor
   DEF_CORNERSE_CURSOR,                  /// South-east cursor
   DEF_CORNERSW_CURSOR,                  /// South-west cursor
+  DEF_HELP_CURSOR,                      /// Help arrow cursor
+  DEF_HAND_CURSOR,                      /// Hand cursor
   DEF_ROTATE_CURSOR                     /// Rotate cursor
   };
 
@@ -145,19 +149,23 @@ class FXAPI FXApp : public FXObject {
   friend class FXRootWindow;
   friend class FXTopWindow;
   friend class FXMainWindow;
+  friend class FXPopup;
   friend class FXFont;
   friend class FXVisual;
   friend class FXGLVisual;
   friend class FXGLContext;
   friend class FXDC;
   friend class FXDCWindow;
+  friend class FXDockHandler;
+  friend class FXEmbedderWindow;
 
 private:
 
   // Platform independent private data
   void            *display;             // Display we're talking to
+  const FXchar    *dpy;                 // Initial display guess
+  FXHash           hash;                // Window handle hash table
   FXRegistry       registry;            // Application setting registry
-  FXWindow        *mainWindow;          // Main window
   FXWindow        *focusWindow;         // Window which has the focus
   FXWindow        *cursorWindow;        // Window under the cursor
   FXWindow        *mouseGrabWindow;     // Window which grabbed the mouse
@@ -168,6 +176,8 @@ private:
   FXWindow        *dropWindow;          // Drop target window
   FXWindow        *dragWindow;          // Drag source window
   FXWindow        *refresher;           // GUI refresher pointer
+  FXWindow        *refresherstop;       // GUI refresher end pointer
+  FXPopup         *popupWindow;         // Current popup window
   FXRootWindow    *root;                // Root window
   FXVisual        *monoVisual;          // Monochrome visual
   FXVisual        *defaultVisual;       // Default [color] visual
@@ -181,14 +191,15 @@ private:
   FXSignal        *signals;             // Array of signal records
   FXint            nsignals;            // Number of signals
   FXFont          *normalFont;          // Normal font
-  FXuint           maxcolors;           // Maximum number of colors to allocate
+  FXFont          *stockFont;           // Stock font
+  FXMutex          appMutex;            // Application wide mutex
   FXEvent          event;               // Event
   FXInput         *inputs;              // Input file descriptors being watched
   FXint            ninputs;             // Number of inputs
   FXint            maxinput;            // Maximum input number
   FXuchar         *ddeData;             // DDE array
   FXuint           ddeSize;             // DDE array size
-  FXbool           again;               // Refresher goes again
+  FXuint           maxcolors;           // Maximum number of colors to allocate
   FXuint           typingSpeed;         // Typing speed
   FXuint           clickSpeed;          // Double click speed
   FXuint           scrollSpeed;         // Scroll speed
@@ -210,9 +221,13 @@ private:
   FXColor          selbackColor;        // Select background color
   FXColor          tipforeColor;        // Tooltip foreground color
   FXColor          tipbackColor;        // Tooltip background color
+  FXColor          selMenuTextColor;    // Select foreground color in menus
+  FXColor          selMenuBackColor;    // Select background color in menus
   FXCursor        *waitCursor;          // Current wait cursor
-  FXuint           waitcount;           // Number of times wait cursor was called
+  FXuint           waitCount;           // Number of times wait cursor was called
   FXCursor        *cursor[DEF_ROTATE_CURSOR+1];
+  FXint                appArgc;         // Argument count
+  const FXchar *const *appArgv;         // Argument vector
   FXbool           initialized;         // Has been initialized
 
 private:
@@ -221,16 +236,23 @@ private:
   // Platform dependent private stuff
 #ifndef WIN32
 private:
-  int              wcontext;            // Window hash context
   FXID             wmDeleteWindow;      // Catch delete window
   FXID             wmQuitApp;           // Catch quit application
   FXID             wmProtocols;         // Window manager protocols
   FXID             wmMotifHints;        // Motif hints
   FXID             wmTakeFocus;         // Focus explicitly set by app
   FXID             wmState;             // Window state
+  FXID             wmNetSupported;      // Extended Window Manager states list
+  FXID             wmNetState;          // Extended Window Manager window state
+  FXID             wmNetHMaximized;     // Extended Window Manager horizontally maximized
+  FXID             wmNetVMaximized;     // Extended Window Manager vertically maximized
+  FXID             embedAtom;           // XEMBED support
+  FXID             embedInfoAtom;       // XEMBED info support
+  FXID             timestampAtom;       // Server time
   FXID             ddeTargets;          // DDE targets atom
   FXID             ddeAtom;             // DDE exchange atom
   FXID             ddeDelete;           // DDE delete target atom
+  FXID             ddeIncr;             // DDE incremental data exchange atom
   FXDragType      *ddeTypeList;         // DDE drop type list
   FXuint           ddeNumTypes;         // DDE number of drop types
   FXDragAction     ddeAction;           // DDE action
@@ -263,6 +285,7 @@ private:
   FXbool           xdndStatusReceived;  // XDND received at least one status
   FXbool           xdndWantUpdates;     // XDND target wants new positions while in rect
   FXRectangle      xdndRect;            // XDND rectangle bounding target
+  FXint            xrreventbase;        // XRR event base
   FXID             stipples[23];        // Standard stipple patterns
   void            *r_fds;               // Set of file descriptors for read
   void            *w_fds;               // Set of file descriptors for write
@@ -293,7 +316,6 @@ private:
   FXbool           xdndStatusReceived;  // XDND received at least one status
   FXRectangle      xdndRect;            // XDND rectangle bounding target
   FXID             stipples[17];        // Standard stipple bitmaps
-  static FXID      hInstance;           // Global instance handle
   void           **handles;             // Waitable object handles
 
 #endif
@@ -305,22 +327,22 @@ private:
   FXApp &operator=(const FXApp&);
   static void signalhandler(int sig);
   static void immediatesignalhandler(int sig);
-  void dragdropSetData(FXWindow* window,FXDragType type,FXuchar* data,FXuint size);
-  void dragdropGetData(FXWindow* window,FXDragType type,FXuchar*& data,FXuint& size);
-  void dragdropGetTypes(FXWindow* window,FXDragType*& types,FXuint& numtypes);
-  void selectionSetData(FXWindow* window,FXDragType type,FXuchar* data,FXuint size);
-  void selectionGetData(FXWindow* window,FXDragType type,FXuchar*& data,FXuint& size);
-  void selectionGetTypes(FXWindow* window,FXDragType*& types,FXuint& numtypes);
-  void clipboardSetData(FXWindow* window,FXDragType type,FXuchar* data,FXuint size);
-  void clipboardGetData(FXWindow* window,FXDragType type,FXuchar*& data,FXuint& size);
-  void clipboardGetTypes(FXWindow* window,FXDragType*& types,FXuint& numtypes);
+  void leaveWindow(FXWindow *window,FXWindow *ancestor);
+  void enterWindow(FXWindow *window,FXWindow *ancestor);
+  void selectionSetData(const FXWindow* window,FXDragType type,FXuchar* data,FXuint size);
+  void selectionGetData(const FXWindow* window,FXDragType type,FXuchar*& data,FXuint& size);
+  void selectionGetTypes(const FXWindow* window,FXDragType*& types,FXuint& numtypes);
+  void clipboardSetData(const FXWindow* window,FXDragType type,FXuchar* data,FXuint size);
+  void clipboardGetData(const FXWindow* window,FXDragType type,FXuchar*& data,FXuint& size);
+  void clipboardGetTypes(const FXWindow* window,FXDragType*& types,FXuint& numtypes);
+  void dragdropSetData(const FXWindow* window,FXDragType type,FXuchar* data,FXuint size);
+  void dragdropGetData(const FXWindow* window,FXDragType type,FXuchar*& data,FXuint& size);
+  void dragdropGetTypes(const FXWindow* window,FXDragType*& types,FXuint& numtypes);
 #ifndef WIN32
   void addRepaint(FXID win,FXint x,FXint y,FXint w,FXint h,FXbool synth=0);
   void removeRepaints(FXID win,FXint x,FXint y,FXint w,FXint h);
   void scrollRepaints(FXID win,FXint dx,FXint dy);
 #else
-  void leaveWindow(FXWindow *win,FXWindow *anc);
-  void enterWindow(FXWindow *win,FXWindow *anc);
   static long CALLBACK wndproc(FXID hwnd,unsigned int iMsg,unsigned int wParam,long lParam);
 protected:
   virtual long dispatchEvent(FXID hwnd,unsigned int iMsg,unsigned int wParam,long lParam);
@@ -337,13 +359,15 @@ protected:
 public:
   long onCmdQuit(FXObject*,FXSelector,void*);
   long onCmdDump(FXObject*,FXSelector,void*);
+  long onCmdHover(FXObject*,FXSelector,void*);
 
 public:
 
   /// Messages applications understand
   enum {
-    ID_QUIT=0,    /// Terminate the application normally
+    ID_QUIT=1,    /// Terminate the application normally
     ID_DUMP,      /// Dump the current widget tree
+    ID_HOVER,
     ID_LAST
     };
 
@@ -356,7 +380,8 @@ public:
 
   /**
   * Construct application object; the name and vendor strings are used
-  * as keys into the registry database for this application's settings
+  * as keys into the registry database for this application's settings.
+  * Only one single application object can be constructed.
   */
   FXApp(const FXString& name="Application",const FXString& vendor="FoxDefault");
 
@@ -367,13 +392,22 @@ public:
   const FXString& getVendorName() const { return registry.getVendorKey(); }
 
   /// Connection to display; this is called by init()
-  FXbool openDisplay(const FXchar* dpyname=":0");
+  FXbool openDisplay(const FXchar* dpyname=NULL);
 
   /// Close connection to the display
   FXbool closeDisplay();
 
   /// Return pointer
   void* getDisplay() const { return display; }
+
+  /// Is application initialized
+  FXbool isInitialized() const { return initialized; }
+
+  /// Get argument count
+  FXint getArgc() const { return appArgc; }
+
+  /// Get argument vector
+  const FXchar *const *getArgv() const { return appArgv; }
 
   /// Get default visual
   FXVisual* getDefaultVisual() const { return defaultVisual; }
@@ -385,7 +419,10 @@ public:
   FXVisual* getMonoVisual() const { return monoVisual; }
 
   /// Get root Window
-  FXRootWindow* getRoot() const { return root; }
+  FXRootWindow* getRootWindow() const { return root; }
+
+  /// Set root Window
+  void setRootWindow(FXRootWindow* rt);
 
   /// Get the window under the cursor, if any
   FXWindow *getCursorWindow() const { return cursorWindow; }
@@ -393,8 +430,8 @@ public:
   /// Get the window which has the focus, if any
   FXWindow *getFocusWindow() const { return focusWindow; }
 
-  /// Get main window, if any
-  FXWindow *getMainWindow() const { return mainWindow; }
+  /// Get current popup window, if any
+  FXPopup* getPopupWindow() const { return popupWindow; }
 
   /// Find window from id
   FXWindow* findWindowWithId(FXID xid) const;
@@ -402,30 +439,71 @@ public:
   /// Find window from root x,y, starting from given window
   FXWindow* findWindowAt(FXint rx,FXint ry,FXID window=0) const;
 
+  /// Create application's windows
+  virtual void create();
+
+  /// Destroy application's windows
+  virtual void destroy();
+
+  /// Detach application's windows
+  virtual void detach();
+
   /**
   * Add timeout message to be sent to target object in ms milliseconds;
-  * the timer fires only once after the interval expires.
+  * the timer fires only once after the interval expires.  The void* ptr
+  * is user data which will be passed into the void* ptr of the message
+  * handler.  If a timer with the same target and message already exists,
+  * it will be rescheduled.
   */
-  FXTimer* addTimeout(FXint ms,FXObject* tgt,FXSelector sel);
+  void addTimeout(FXObject* tgt,FXSelector sel,FXuint ms=1000,void* ptr=NULL);
 
-  /// Remove timeout, returns NULL
-  FXTimer* removeTimeout(FXTimer *t);
+  /**
+  * Remove timeout identified by tgt and sel.
+  */
+  void removeTimeout(FXObject* tgt,FXSelector sel);
+
+  /**
+  * Return TRUE if given timeout has been set
+  */
+  FXbool hasTimeout(FXObject *tgt,FXSelector sel) const;
+
+  /**
+  * Return, in ms, the time remaining until the given timer fires.
+  * If the timer is past due, 0 is returned.  If there is no such
+  * timer, infinity (UINT_MAX) is returned.
+  */
+  FXuint remainingTimeout(FXObject *tgt,FXSelector sel);
+
+  /**
+  * Process any timouts due at this time.
+  */
+  void handleTimouts();
 
   /**
   * Add a idle processing message to be sent to target object when
   * the system becomes idle, i.e. there are no events to be processed.
+  * The void* ptr is user data which will be passed into the void* ptr
+  * of the message handler. If a chore with the same target and message
+  * already exists, it will be rescheduled.
   */
-  FXChore* addChore(FXObject* tgt,FXSelector sel);
+  void addChore(FXObject* tgt,FXSelector sel,void *ptr=NULL);
 
-  /// Remove idle processing message
-  FXChore* removeChore(FXChore *c);
+  /**
+  * Remove idle processing message identified by tgt and sel.
+  */
+  void removeChore(FXObject* tgt,FXSelector sel);
+
+  /**
+  * Return TRUE if given chore has been set
+  */
+  FXbool hasChore(FXObject *tgt,FXSelector sel) const;
 
   /**
   * Add signal processing message to be sent to target object when
   * the signal sig is raised; flags are to be set as per POSIX definitions.
   * When immediate is TRUE, the message will be sent to the target right away;
   * this should be used with extreme care as the application is interrupted
-  * at an unknown point it its execution.
+  * at an unknown point in its execution.
   */
   void addSignal(FXint sig,FXObject* tgt,FXSelector sel,FXbool immediate=FALSE,FXuint flags=0);
 
@@ -446,20 +524,14 @@ public:
   */
   FXbool removeInput(FXInputHandle fd,FXuint mode);
 
-  /// Create application's windows
-  virtual void create();
-
-  /// Destroy application's windows
-  virtual void destroy();
-
-  /// Detach application's windows
-  virtual void detach();
+  /// Return key state
+  FXbool getKeyState(FXuint keysym) const;
 
   /// Peek to determine if there's an event
   FXbool peekEvent();
 
-  /// Perform one event dispatch
-  void runOneEvent();
+  /// Perform one event dispatch; return true if event was dispatched
+  FXbool runOneEvent(FXbool blocking=TRUE);
 
   /**
   * Run the main application event loop until stop() is called,
@@ -467,17 +539,26 @@ public:
   */
   FXint run();
 
-  /// Run an event loop till some flag becomes non-zero
+  /**
+  * Run an event loop till some flag becomes non-zero, and
+  * then return.
+  */
   FXint runUntil(FXuint& condition);
+
+  /**
+  * Run event loop while events are available, non-modally.
+  * Return when no more events, timers, or chores are outstanding.
+  */
+  FXint runWhileEvents();
 
   /**
   * Run event loop while there are events are available in the queue.
   * Returns 1 when all events in the queue have been handled, and 0 when
   * the event loop was terminated due to stop() or stopModal().
   * Except for the modal window and its children, user input to all windows
-  * is blocked; if the modal window is NULL all user input is blocked.
+  * is blocked; if the modal window is NULL, all user input is blocked.
   */
-  FXint runWhileEvents(FXWindow* window=NULL);
+  FXint runModalWhileEvents(FXWindow* window=NULL);
 
   /**
   * Run modal event loop, blocking keyboard and mouse events to all windows
@@ -509,10 +590,10 @@ public:
   FXbool isModal(FXWindow* window) const;
 
   /// Return window of current modal loop
-  FXWindow* modalWindow() const;
+  FXWindow* getModalWindow() const;
 
   /// Return mode of current modal loop
-  FXModality modalModality() const;
+  FXModality getModality() const;
 
   /**
   * Terminate the outermost event loop, and all inner modal loops;
@@ -560,7 +641,12 @@ public:
   */
   virtual void exit(FXint code=0);
 
-  /// Get registry
+  /**
+  * Return a reference to the registry.  The registry keeps
+  * settings and configuration information for an application,
+  * which are automatically loaded when the application starts
+  * up, and saved when the application terminates.
+  */
   FXRegistry& reg(){ return registry; }
 
   /// Register new DND type
@@ -568,6 +654,9 @@ public:
 
   /// Get drag type name
   FXString getDragTypeName(FXDragType type) const;
+
+  /// Return drag window if a drag operation is in progress
+  FXWindow* getDragWindow() const { return dragWindow; }
 
   /// Beep
   void beep();
@@ -598,6 +687,20 @@ public:
 
   /// Change default cursor
   void setDefaultCursor(FXDefaultCursor which,FXCursor* cur);
+
+  /**
+  * Return a reference to the application-wide mutex.
+  * Normally, the main user interface thread holds this mutex,
+  * insuring that no other threads are modifying data during the
+  * processing of user interface messages. However, whenever the
+  * main user interface thread blocks for messages, it releases
+  * this mutex, to allow other threads to modify the same data.
+  * When a new message becomes available, the main user interface
+  * thread regains the mutex prior to dispatching the message.
+  * Other threads should hold this mutex only for short durations,
+  * so as to not starve the main user interface thread.
+  */
+  FXMutex& mutex(){ return appMutex; }
 
   /// Obtain application-wide settings
   FXuint getTypingSpeed() const { return typingSpeed; }
@@ -636,6 +739,8 @@ public:
   FXColor getSelbackColor() const { return selbackColor; }
   FXColor getTipforeColor() const { return tipforeColor; }
   FXColor getTipbackColor() const { return tipbackColor; }
+  FXColor getSelMenuTextColor() const { return selMenuTextColor; }
+  FXColor getSelMenuBackColor() const { return selMenuBackColor; }
 
   /// Change default colors
   void setBorderColor(FXColor color);
@@ -648,6 +753,8 @@ public:
   void setSelbackColor(FXColor color);
   void setTipforeColor(FXColor color);
   void setTipbackColor(FXColor color);
+  void setSelMenuTextColor(FXColor color);
+  void setSelMenuBackColor(FXColor color);
 
   /// Save
   virtual void save(FXStream& store) const;
@@ -661,5 +768,7 @@ public:
   /// Destroy the application and all reachable resources
   virtual ~FXApp();
   };
+
+}
 
 #endif

@@ -3,7 +3,7 @@
 *                          T I F F  I m a g e   O b j e c t                     *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2001,2002 Eric Gillet.   All Rights Reserved.                   *
+* Copyright (C) 2001,2005 Eric Gillet.   All Rights Reserved.                   *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,15 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXTIFImage.cpp,v 1.6 2002/01/18 22:55:04 jeroen Exp $                    *
+* $Id: FXTIFImage.cpp,v 1.24 2005/01/16 16:06:07 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
+#include "FXMemoryStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
@@ -40,46 +43,61 @@
   - FXTIFImage has an alpha channel.
 */
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
+
+
+// Suggested file extension
+const FXchar FXTIFImage::fileExt[]="tif";
+
 
 // Object implementation
 FXIMPLEMENT(FXTIFImage,FXImage,NULL,0)
 
 
+#ifdef HAVE_TIFF_H
+const FXbool FXTIFImage::supported=TRUE;
+#else
+const FXbool FXTIFImage::supported=FALSE;
+#endif
+
+
 // Initialize
-FXTIFImage::FXTIFImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):
-  FXImage(a,NULL,opts|IMAGE_ALPHA,w,h){
-  codec=0;
+FXTIFImage::FXTIFImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):FXImage(a,NULL,opts,w,h),codec(0){
   if(pix){
     FXMemoryStream ms;
-    FXColor clearcolor;
-    ms.open((FXuchar*)pix,FXStreamLoad);
-    fxloadTIF(ms,data,clearcolor,width,height,codec);
-    options|=IMAGE_OWNED;
+    ms.open(FXStreamLoad,(FXuchar*)pix);
+    loadPixels(ms);
     ms.close();
     }
   }
 
+
 // Save the pixels only
-void FXTIFImage::savePixels(FXStream& store) const {
-  FXColor clearcolor=FXRGB(192,192,192);
-  FXASSERT(options&IMAGE_ALPHA);
-  fxsaveTIF(store,data,clearcolor,width,height,codec);
+FXbool FXTIFImage::savePixels(FXStream& store) const {
+  if(fxsaveTIF(store,data,width,height,codec)){
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
-
 // Load pixels only
-void FXTIFImage::loadPixels(FXStream& store){
-  FXColor clearcolor;
-  if(options&IMAGE_OWNED){FXFREE(&data);}
-  fxloadTIF(store,data,clearcolor,width,height,codec);
-  options|=IMAGE_ALPHA;
-  options|=IMAGE_OWNED;
+FXbool FXTIFImage::loadPixels(FXStream& store){
+  FXColor *pixels; FXint w,h;
+  if(fxloadTIF(store,pixels,w,h,codec)){
+    setData(pixels,IMAGE_OWNED,w,h);
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
 // Clean up
 FXTIFImage::~FXTIFImage(){
   }
+
+}

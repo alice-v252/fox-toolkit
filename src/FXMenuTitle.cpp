@@ -3,7 +3,7 @@
 *                       M e n u   T i t l e   W i d g e t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMenuTitle.cpp,v 1.26 2002/01/18 22:43:01 jeroen Exp $                  *
+* $Id: FXMenuTitle.cpp,v 1.45 2005/02/01 21:29:58 fox Exp $                     *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -41,20 +43,23 @@
 
 /*
   Notes:
-  - Accelerators.
   - Help text from constructor is third part; second part should be
     accelerator key combination.
   - When menu label changes, hotkey might have to be adjusted.
   - Fix it so menu stays up when after Alt-F, you press Alt-E.
   - Menu items should be derived from FXLabel.
   - Look into SEL_FOCUS_SELF some more...
-  - New:- under W2K, the underscores for the accelerators no longer
-    show up until the ALT key is pressed [but not sure if I like this,
-    as it makes the accelerator undiscoverable].
+  - GUI update disabled while menu is popped up.
+  - Menu shows besides Menu Title if menubar is vertical.
 */
 
 
+
+using namespace FX;
+
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXMenuTitle) FXMenuTitleMap[]={
@@ -110,6 +115,10 @@ void FXMenuTitle::detach(){
   }
 
 
+// If window can have focus
+FXbool FXMenuTitle::canFocus() const { return 1; }
+
+
 // Get default width
 FXint FXMenuTitle::getDefaultWidth(){
   FXint tw,iw;
@@ -131,150 +140,19 @@ FXint FXMenuTitle::getDefaultHeight(){
   }
 
 
-// If window can have focus
-FXbool FXMenuTitle::canFocus() const {
-  return 1;
-  }
-
-
-// When pressed, perform ungrab, then process normally
-long FXMenuTitle::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
-  handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-  if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONPRESS),ptr)) return 1;
-    if(flags&FLAG_ACTIVE){
-      handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
-      }
-    else{
-      handle(this,MKUINT(ID_POST,SEL_COMMAND),NULL);
-      }
-    return 1;
-    }
-  return 0;
-  }
-
-
-// Released left button
-long FXMenuTitle::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
-  FXEvent* event=(FXEvent*)ptr;
-  if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONRELEASE),ptr)) return 1;
-    if(event->moved){
-      handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),ptr);
-      }
-    return 1;
-    }
-  return 0;
-  }
-
-
-// Keyboard press; forward to menu pane
-long FXMenuTitle::onKeyPress(FXObject*,FXSelector sel,void* ptr){
-  FXEvent* event=(FXEvent*)ptr;
-  if(isEnabled()){
-    FXTRACE((200,"%s::onKeyPress %p keysym=0x%04x state=%04x\n",getClassName(),this,event->code,event->state));
-    if(target && target->handle(this,MKUINT(message,SEL_KEYPRESS),ptr)) return 1;
-    if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
-    }
-  return 0;
-  }
-
-
-// Keyboard release; forward to menu pane
-long FXMenuTitle::onKeyRelease(FXObject*,FXSelector sel,void* ptr){
-  FXEvent* event=(FXEvent*)ptr;
-  if(isEnabled()){
-    FXTRACE((200,"%s::onKeyRelease %p keysym=0x%04x state=%04x\n",getClassName(),this,event->code,event->state));
-    if(target && target->handle(this,MKUINT(message,SEL_KEYRELEASE),ptr)) return 1;
-    if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
-    }
-  return 0;
-  }
-
-
-// Hot key combination pressed
-long FXMenuTitle::onHotKeyPress(FXObject*,FXSelector,void* ptr){
-  FXTRACE((200,"%s::onHotKeyPress %p\n",getClassName(),this));
-  handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
-  return 1;
-  }
-
-
-// Hot key combination released
-long FXMenuTitle::onHotKeyRelease(FXObject*,FXSelector,void*){
-  FXTRACE((200,"%s::onHotKeyRelease %p\n",getClassName(),this));
-  if(isEnabled()){
-    if(flags&FLAG_ACTIVE){
-      handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
-      }
-    else{
-      handle(this,MKUINT(ID_POST,SEL_COMMAND),NULL);
-      }
-    }
-  return 1;
-  }
-
-
-// Post the menu
-long FXMenuTitle::onCmdPost(FXObject*,FXSelector,void*){
-  FXint x,y;
-  if(pane && !pane->shown()){
-    translateCoordinatesTo(x,y,getRoot(),0,0);
-    pane->popup(getParent(),x-1,y+height);
-    if(!getParent()->grabbed()) getParent()->grab();
-    }
-  flags|=FLAG_ACTIVE;
+// Gained focus
+long FXMenuTitle::onFocusIn(FXObject* sender,FXSelector sel,void* ptr){
+  FXMenuCaption::onFocusIn(sender,sel,ptr);
   update();
   return 1;
   }
 
 
-// Unpost the menu
-long FXMenuTitle::onCmdUnpost(FXObject*,FXSelector,void*){
-  if(pane && pane->shown()){
-    pane->popdown();
-    if(getParent()->grabbed()) getParent()->ungrab();
-    }
-  flags&=~FLAG_ACTIVE;
+// Lost focus
+long FXMenuTitle::onFocusOut(FXObject* sender,FXSelector sel,void* ptr){
+  FXMenuCaption::onFocusOut(sender,sel,ptr);
   update();
   return 1;
-  }
-
-
-// Focus moved down
-long FXMenuTitle::onFocusDown(FXObject*,FXSelector,void*){
-  if(pane && !pane->shown()){
-    handle(this,MKUINT(ID_POST,SEL_COMMAND),NULL);
-    return 1;
-    }
-  return 0;
-  }
-
-
-// Focus moved up
-long FXMenuTitle::onFocusUp(FXObject*,FXSelector,void*){
-  if(pane && pane->shown()){
-    handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
-    return 1;
-    }
-  return 0;
-  }
-
-
-// Into focus chain
-void FXMenuTitle::setFocus(){
-  FXWindow *menuitem=getParent()->getFocus();
-  FXbool active=menuitem && menuitem->isActive();
-  FXMenuCaption::setFocus();
-  if(active) handle(this,MKUINT(ID_POST,SEL_COMMAND),NULL);
-  }
-
-
-
-// Out of focus chain
-void FXMenuTitle::killFocus(){
-  FXMenuCaption::killFocus();
-  handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
   }
 
 
@@ -297,12 +175,181 @@ long FXMenuTitle::onLeave(FXObject* sender,FXSelector sel,void* ptr){
   }
 
 
+// When pressed, perform ungrab, then process normally
+long FXMenuTitle::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
+  if(isEnabled()){
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
+    if(flags&FLAG_ACTIVE){
+      handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
+      }
+    else{
+      handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
+      }
+    return 1;
+    }
+  return 0;
+  }
+
+
+// Released left button
+long FXMenuTitle::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
+  FXEvent* event=(FXEvent*)ptr;
+  if(isEnabled()){
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
+    if(event->moved){
+      handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),ptr);
+      }
+    return 1;
+    }
+  return 0;
+  }
+
+
+// Keyboard press; forward to menu pane
+long FXMenuTitle::onKeyPress(FXObject*,FXSelector sel,void* ptr){
+  if(isEnabled()){
+    FXTRACE((200,"%s::onKeyPress %p keysym=0x%04x state=%04x\n",getClassName(),this,((FXEvent*)ptr)->code,((FXEvent*)ptr)->state));
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
+    if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
+    }
+  return 0;
+  }
+
+
+// Keyboard release; forward to menu pane
+long FXMenuTitle::onKeyRelease(FXObject*,FXSelector sel,void* ptr){
+  if(isEnabled()){
+    FXTRACE((200,"%s::onKeyRelease %p keysym=0x%04x state=%04x\n",getClassName(),this,((FXEvent*)ptr)->code,((FXEvent*)ptr)->state));
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
+    if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
+    }
+  return 0;
+  }
+
+
+// Hot key combination pressed
+long FXMenuTitle::onHotKeyPress(FXObject*,FXSelector,void* ptr){
+  FXTRACE((200,"%s::onHotKeyPress %p\n",getClassName(),this));
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
+  return 1;
+  }
+
+
+// Hot key combination released
+long FXMenuTitle::onHotKeyRelease(FXObject*,FXSelector,void*){
+  FXTRACE((200,"%s::onHotKeyRelease %p\n",getClassName(),this));
+  if(isEnabled()){
+    if(flags&FLAG_ACTIVE){
+      handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
+      }
+    else{
+      handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
+      }
+    }
+  return 1;
+  }
+
+
+// Post the menu
+long FXMenuTitle::onCmdPost(FXObject*,FXSelector,void*){
+  FXint x,y,side;
+  if(pane && !pane->shown()){
+    translateCoordinatesTo(x,y,getRoot(),0,0);
+    side=getParent()->getLayoutHints();
+    if(side&LAYOUT_SIDE_LEFT){  // Vertical
+      y-=1;
+      if(side&LAYOUT_SIDE_BOTTOM){      // On right
+        x-=pane->getDefaultWidth();
+        }
+      else{                             // On left
+        x+=width;
+        }
+      }
+    else{                       // Horizontal
+      x-=1;
+      if(side&LAYOUT_SIDE_BOTTOM){      // On bottom
+        y-=pane->getDefaultHeight();
+        }
+      else{                             // On top
+        y+=height;
+        }
+      }
+    pane->popup(getParent(),x,y);
+    if(!getParent()->grabbed()) getParent()->grab();
+    }
+  flags&=~FLAG_UPDATE;
+  flags|=FLAG_ACTIVE;
+  update();
+  return 1;
+  }
+
+
+// Unpost the menu
+long FXMenuTitle::onCmdUnpost(FXObject*,FXSelector,void*){
+  if(pane && pane->shown()){
+    pane->popdown();
+    if(getParent()->grabbed()) getParent()->ungrab();
+    }
+  flags|=FLAG_UPDATE;
+  flags&=~FLAG_ACTIVE;
+  update();
+  return 1;
+  }
+
+
+// Focus moved down
+long FXMenuTitle::onFocusDown(FXObject*,FXSelector,void*){
+  if(pane && !pane->shown()){
+    handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
+    return 1;
+    }
+  return 0;
+  }
+
+
+// Focus moved up
+long FXMenuTitle::onFocusUp(FXObject*,FXSelector,void*){
+  if(pane && pane->shown()){
+    handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
+    return 1;
+    }
+  return 0;
+  }
+
+
+// Into focus chain
+void FXMenuTitle::setFocus(){
+  FXWindow *menuitem=getParent()->getFocus();
+  FXbool active=menuitem && menuitem->isActive();
+  FXMenuCaption::setFocus();
+  if(active) handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
+  }
+
+
+
+// Out of focus chain
+void FXMenuTitle::killFocus(){
+  FXMenuCaption::killFocus();
+  handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
+  }
+
+
+// Change the popup menu
+void FXMenuTitle::setMenu(FXPopup *pup){
+  if(pup!=pane){
+    pane=pup;
+    recalc();
+    }
+  }
+
+
 // Handle repaint
 long FXMenuTitle::onPaint(FXObject*,FXSelector,void* ptr){
   FXEvent *ev=(FXEvent*)ptr;
   FXDCWindow dc(this,ev);
   FXint xx,yy;
-  dc.setTextFont(font);
+  dc.setFont(font);
   xx=6;
   yy=0;
   if(isEnabled()){
@@ -372,22 +419,6 @@ long FXMenuTitle::onPaint(FXObject*,FXSelector,void* ptr){
   }
 
 
-// Gained focus
-long FXMenuTitle::onFocusIn(FXObject* sender,FXSelector sel,void* ptr){
-  FXMenuCaption::onFocusIn(sender,sel,ptr);
-  update();
-  return 1;
-  }
-
-
-// Lost focus
-long FXMenuTitle::onFocusOut(FXObject* sender,FXSelector sel,void* ptr){
-  FXMenuCaption::onFocusOut(sender,sel,ptr);
-  update();
-  return 1;
-  }
-
-
 // Test if logically inside
 FXbool FXMenuTitle::contains(FXint parentx,FXint parenty) const {
   FXint x,y;
@@ -416,7 +447,8 @@ void FXMenuTitle::load(FXStream& store){
 
 // Delete it
 FXMenuTitle::~FXMenuTitle(){
-  pane=(FXMenuPane*)-1;
+  pane=(FXMenuPane*)-1L;
   }
 
+}
 

@@ -3,7 +3,7 @@
 *                              D a t a   T a r g e t                            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXDataTarget.h,v 1.14 2002/01/18 22:42:52 jeroen Exp $                   *
+* $Id: FXDataTarget.h,v 1.22 2005/01/16 16:06:06 fox Exp $                      *
 ********************************************************************************/
 #ifndef FXDATATARGET_H
 #define FXDATATARGET_H
@@ -28,6 +28,7 @@
 #include "FXObject.h"
 #endif
 
+namespace FX {
 
 
 /**
@@ -39,7 +40,7 @@
 * to reflect this new value on the display.
 * Data Targets also allow connecting Radio Buttons, Menu Commands, and so on
 * to a variable.  In this case, the new value of the connected variable is computed
-* by substracting ID_OPTION from the message ID.
+* by subtracting ID_OPTION from the message ID.
 */
 class FXAPI FXDataTarget : public FXObject {
   FXDECLARE(FXDataTarget)
@@ -62,6 +63,8 @@ public:
     DT_USHORT,
     DT_INT,
     DT_UINT,
+    DT_LONG,
+    DT_ULONG,
     DT_FLOAT,
     DT_DOUBLE,
     DT_STRING,
@@ -95,6 +98,12 @@ public:
 
   /// Associate with unsigned int variable
   FXDataTarget(FXuint& value,FXObject* tgt=NULL,FXSelector sel=0):target(tgt),data(&value),message(sel),type(DT_UINT){}
+
+  /// Associate with long variable
+  FXDataTarget(FXlong& value,FXObject* tgt=NULL,FXSelector sel=0):target(tgt),data(&value),message(sel),type(DT_LONG){}
+
+  /// Associate with unsigned long variable
+  FXDataTarget(FXulong& value,FXObject* tgt=NULL,FXSelector sel=0):target(tgt),data(&value),message(sel),type(DT_ULONG){}
 
   /// Associate with float variable
   FXDataTarget(FXfloat& value,FXObject* tgt=NULL,FXSelector sel=0):target(tgt),data(&value),message(sel),type(DT_FLOAT){}
@@ -147,6 +156,12 @@ public:
   /// Associate with unsigned int variable
   void connect(FXuint& value){ type=DT_UINT; data=&value; }
 
+  /// Associate with long variable
+  void connect(FXlong& value){ type=DT_LONG; data=&value; }
+
+  /// Associate with unsigned long variable
+  void connect(FXulong& value){ type=DT_ULONG; data=&value; }
+
   /// Associate with float variable
   void connect(FXfloat& value){ type=DT_FLOAT; data=&value; }
 
@@ -155,8 +170,11 @@ public:
 
   /// Associate with string variable
   void connect(FXString& value){ type=DT_STRING; data=&value; }
+
+  /// Destroy
+  virtual ~FXDataTarget();
   };
 
-
+}
 
 #endif

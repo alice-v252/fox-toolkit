@@ -3,7 +3,7 @@
 *                             O p t i o n   M e n u                             *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXOptionMenu.cpp,v 1.32.4.2 2003/06/20 19:02:07 fox Exp $                 *
+* $Id: FXOptionMenu.cpp,v 1.58 2005/01/16 16:06:07 fox Exp $                    *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -40,7 +42,7 @@
 #include "FXPopup.h"
 #include "FXButton.h"
 #include "FXMenuButton.h"
-#include "FXTooltip.h"
+#include "FXToolTip.h"
 #include "FXOptionMenu.h"
 
 /*
@@ -55,19 +57,21 @@
   - Right-click to cycle through options (as suggested by
     Stephane Ancelot <sancelot@crosswinds.net>) would be nice.
   - Hotkey's don't work in FXOption.
-  - Need to have "notify" in setCurrent.
-  - Need to send callback message from FXOptionMeny, and not from
-    FXOption.
   - Zecchini Mauro <mauro.zecchini@realtimesrl.com> donated code
     to add FXDataTarget get/set connectivity here also.
-
+  - Do we need API's other than those based on current item
+    as an index?
 */
 
 
 #define MENUGLYPH_WIDTH  10
 #define MENUGLYPH_HEIGHT 5
 
+using namespace FX;
+
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXOption) FXOptionMap[]={
@@ -161,7 +165,7 @@ long FXOption::onPaint(FXObject*,FXSelector,void* ptr){
     drawDoubleRaisedRectangle(dc,ix,iy,MENUGLYPH_WIDTH,MENUGLYPH_HEIGHT);
     }
   if(!label.empty()){
-    dc.setTextFont(font);
+    dc.setFont(font);
     if(isEnabled()){
       dc.setForeground(textColor);
       drawLabel(dc,label,hotoff,tx,ty,tw,th);
@@ -197,9 +201,9 @@ long FXOption::onLeave(FXObject* sender,FXSelector sel,void* ptr){
 // Pressed left button; always unposts menu
 long FXOption::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
   if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONPRESS),ptr)) return 1;
-    getParent()->handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),this);
-    if(target) target->handle(this,MKUINT(message,SEL_COMMAND),ptr);
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
+    getParent()->handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),this);
+    if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),ptr);
     return 1;
     }
   return 0;
@@ -209,10 +213,10 @@ long FXOption::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
 // Released left button; unpost menu if cursor has moved
 long FXOption::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
   if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONRELEASE),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
     if(((FXEvent*)ptr)->moved){
-      getParent()->handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),this);
-      if(target) target->handle(this,MKUINT(message,SEL_COMMAND),ptr);
+      getParent()->handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),this);
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),ptr);
       }
     return 1;
     }
@@ -224,7 +228,7 @@ long FXOption::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
 long FXOption::onKeyPress(FXObject*,FXSelector,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_KEYPRESS),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
     if(event->code==KEY_space || event->code==KEY_KP_Space){
       return 1;
       }
@@ -237,10 +241,10 @@ long FXOption::onKeyPress(FXObject*,FXSelector,void* ptr){
 long FXOption::onKeyRelease(FXObject*,FXSelector,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_KEYRELEASE),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
     if(event->code==KEY_space || event->code==KEY_KP_Space){
-      getParent()->handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),this);
-      if(target) target->handle(this,MKUINT(message,SEL_COMMAND),ptr);
+      getParent()->handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),this);
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),ptr);
       return 1;
       }
     }
@@ -251,7 +255,7 @@ long FXOption::onKeyRelease(FXObject*,FXSelector,void* ptr){
 // Hot key combination pressed
 long FXOption::onHotKeyPress(FXObject*,FXSelector,void* ptr){
   flags&=~FLAG_TIP;
-  handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   FXTRACE((100,"FXOption::onHotKeyPress\n"));
   return 1;
   }
@@ -262,8 +266,8 @@ long FXOption::onHotKeyRelease(FXObject*,FXSelector,void* ptr){
   flags&=~FLAG_TIP;
   FXTRACE((100,"FXOption::onHotKeyRelease\n"));
   if(isEnabled()){
-    getParent()->handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),this);
-    if(target) target->handle(this,MKUINT(message,SEL_COMMAND),ptr);
+    getParent()->handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),this);
+    if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),ptr);
     }
   return 1;
   }
@@ -308,8 +312,8 @@ FXDEFMAP(FXOptionMenu) FXOptionMenuMap[]={
   FXMAPFUNC(SEL_KEYRELEASE,0,FXOptionMenu::onKeyRelease),
   FXMAPFUNC(SEL_COMMAND,FXWindow::ID_POST,FXOptionMenu::onCmdPost),
   FXMAPFUNC(SEL_COMMAND,FXWindow::ID_UNPOST,FXOptionMenu::onCmdUnpost),
-  FXMAPFUNC(SEL_UPDATE,FXWindow::ID_QUERY_TIP,FXOptionMenu::onQueryTip),
-  FXMAPFUNC(SEL_UPDATE,FXWindow::ID_QUERY_HELP,FXOptionMenu::onQueryHelp),
+  FXMAPFUNC(SEL_QUERY_TIP,0,FXOptionMenu::onQueryTip),
+  FXMAPFUNC(SEL_QUERY_HELP,0,FXOptionMenu::onQueryHelp),
   FXMAPFUNC(SEL_COMMAND,FXWindow::ID_SETVALUE,FXOptionMenu::onCmdSetValue),
   FXMAPFUNC(SEL_COMMAND,FXWindow::ID_SETINTVALUE,FXOptionMenu::onCmdSetIntValue),
   FXMAPFUNC(SEL_COMMAND,FXWindow::ID_GETINTVALUE,FXOptionMenu::onCmdGetIntValue),
@@ -412,31 +416,37 @@ long FXOptionMenu::onPaint(FXObject*,FXSelector,void* ptr){
     ih=icon->getHeight();
     }
 
-  // Keep some room for the arrow!
   just_x(tx,ix,tw,iw);
   just_y(ty,iy,th,ih);
 
-  // Draw icon
-  if(icon){
-    dc.drawIcon(icon,ix,iy);
-    }
-
-  // Or draw rectangle
-  else{
-    drawDoubleRaisedRectangle(dc,ix,iy,MENUGLYPH_WIDTH,MENUGLYPH_HEIGHT);
-    }
-
-  // Draw text
-  if(!label.empty()){
-    dc.setTextFont(font);
-    if(isEnabled()){
-      dc.setForeground(textColor);
-      drawLabel(dc,label,hotoff,tx,ty,tw,th);
-      if(hasFocus()){
-        dc.drawFocusRectangle(border+2,border+2,width-2*border-4,height-2*border-4);
-        }
+  // Draw enabled state
+  if(isEnabled()){
+    if(icon){
+      dc.drawIcon(icon,ix,iy);
       }
     else{
+      drawDoubleRaisedRectangle(dc,ix,iy,MENUGLYPH_WIDTH,MENUGLYPH_HEIGHT);
+      }
+    if(!label.empty()){
+      dc.setFont(font);
+      dc.setForeground(textColor);
+      drawLabel(dc,label,hotoff,tx,ty,tw,th);
+      }
+    if(hasFocus()){
+      dc.drawFocusRectangle(border+1,border+1,width-2*border-2,height-2*border-2);
+      }
+    }
+
+  // Draw grayed-out state
+  else{
+    if(icon){
+      dc.drawIconSunken(icon,ix,iy);
+      }
+    else{
+      drawDoubleRaisedRectangle(dc,ix,iy,MENUGLYPH_WIDTH,MENUGLYPH_HEIGHT);
+      }
+    if(!label.empty()){
+      dc.setFont(font);
       dc.setForeground(hiliteColor);
       drawLabel(dc,label,hotoff,tx+1,ty+1,tw,th);
       dc.setForeground(shadowColor);
@@ -453,7 +463,7 @@ long FXOptionMenu::onKeyPress(FXObject*,FXSelector sel,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   flags&=~FLAG_TIP;
   if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_KEYPRESS),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
     if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
     switch(event->code){
       case KEY_space:
@@ -469,17 +479,17 @@ long FXOptionMenu::onKeyPress(FXObject*,FXSelector sel,void* ptr){
 long FXOptionMenu::onKeyRelease(FXObject*,FXSelector sel,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_KEYRELEASE),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
     if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
     switch(event->code){
       case KEY_space:
       case KEY_KP_Space:
         if(pane){
           if(pane->shown()){
-            handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
+            handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
             }
           else{
-            handle(this,MKUINT(ID_POST,SEL_COMMAND),NULL);
+            handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
             }
           }
         return 1;
@@ -492,15 +502,15 @@ long FXOptionMenu::onKeyRelease(FXObject*,FXSelector sel,void* ptr){
 // Pressed left button
 long FXOptionMenu::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
   flags&=~FLAG_TIP;
-  handle(this,MKUINT(0,SEL_FOCUS_SELF),ptr);
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONPRESS),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
     if(pane){
       if(pane->shown()){
-        handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
+        handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
         }
       else{
-        handle(this,MKUINT(ID_POST,SEL_COMMAND),NULL);
+        handle(this,FXSEL(SEL_COMMAND,ID_POST),NULL);
         }
       }
     return 1;
@@ -514,8 +524,8 @@ long FXOptionMenu::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
   FXEvent* ev=(FXEvent*)ptr;
   flags&=~FLAG_TIP;
   if(isEnabled()){
-    if(target && target->handle(this,MKUINT(message,SEL_LEFTBUTTONRELEASE),ptr)) return 1;
-    if(ev->moved && pane){ handle(this,MKUINT(ID_UNPOST,SEL_COMMAND),NULL); }
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
+    if(ev->moved && pane){ handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL); }
     return 1;
     }
   return 0;
@@ -564,7 +574,9 @@ long FXOptionMenu::onCmdUnpost(FXObject*,FXSelector,void* ptr){
     pane->popdown();
     if(grabbed()) ungrab();
     flags|=FLAG_UPDATE;
-    if(ptr) setCurrent((FXOption*)ptr);
+    if(ptr){
+      setCurrent((FXOption*)ptr,TRUE);
+      }
     }
   return 1;
   }
@@ -611,7 +623,7 @@ FXbool FXOptionMenu::contains(FXint parentx,FXint parenty) const {
 // Out of focus chain
 void FXOptionMenu::killFocus(){
   FXLabel::killFocus();
-  handle(current,MKUINT(ID_UNPOST,SEL_COMMAND),NULL);
+  handle(current,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
   }
 
 
@@ -620,76 +632,72 @@ FXbool FXOptionMenu::canFocus() const { return 1; }
 
 
 // Set current selection
-void FXOptionMenu::setCurrent(FXOption *win){
-  if(win==NULL){ fxerror("%s::setCurrent: NULL window passed.\n",getClassName()); }
-  if(win->getParent()!=pane){ fxerror("%s::setCurrent: expected parent of window to be the pane.\n",getClassName()); }
+void FXOptionMenu::setCurrent(FXOption *win,FXbool notify){
   if(current!=win){
     current=win;
-    setText(current->getText());
-    setIcon(current->getIcon());
-    FXTRACE((200,"new option = %s\n",current->getText().text()));
+    if(win){
+      setText(current->getText());
+      setIcon(current->getIcon());
+      }
+    else{
+      setText(FXString::null);
+      setIcon(NULL);
+      }
+    if(notify && target){target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)getCurrentNo());}
     }
   }
 
 
 // Set current option
-void FXOptionMenu::setCurrentNo(FXint no){
-  register FXint i=0;
-  if(pane){
-    // FXOption *win=(FXOption*)pane->childAtIndex(no);
-    FXOption *win=(FXOption*)pane->getFirst();
-    while(win && i!=no){
-      win=(FXOption*)win->getNext();
-      i++;
-      }
-    if(win) setCurrent(win);
-    }
+void FXOptionMenu::setCurrentNo(FXint no,FXbool notify){
+  setCurrent(pane ? (FXOption*)pane->childAtIndex(no) : NULL,notify);
   }
 
 
 // Get current option
 FXint FXOptionMenu::getCurrentNo() const {
-  register FXint i=0;
-  if(pane){
-    // return pane->indexOfChild(current);
-    FXOption *win=(FXOption*)pane->getFirst();
-    while(win && win!=current){
-      win=(FXOption*)win->getNext();
-      i++;
-      }
-    }
-  return i;
+  return pane ? pane->indexOfChild(current) : -1;
+  }
+
+
+// Get the number of options in this menu
+FXint FXOptionMenu::getNumOptions() const {
+  return pane ? pane->numChildren() : 0;
   }
 
 
 // Change popup
-void FXOptionMenu::setPopup(FXPopup *pup){
-  FXOption *win;
-  pane=pup;
-  if(pane){
-    win=(FXOption*)pane->getFirst();
-    if(win){
-      setText(win->getText());
-      setIcon(win->getIcon());
+void FXOptionMenu::setMenu(FXPopup *pup){
+  register FXOption *win;
+  if(pup!=pane){
+    pane=pup;
+    if(pane){
+      win=(FXOption*)pane->getFirst();
+      if(win){
+        setText(win->getText());
+        setIcon(win->getIcon());
+        }
+      current=win;
       }
-    current=win;
+    recalc();
     }
   }
 
 
-// The current option's help is returned, unless there is no help,
-// in which case the option menu's help is returned
-long FXOptionMenu::onQueryHelp(FXObject* sender,FXSelector,void*){
-  if(flags&FLAG_HELP){
+// The current option's tip is returned, unless there is no tip,
+// in which case the option menu's tip is returned
+long FXOptionMenu::onQueryTip(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXWindow::onQueryTip(sender,sel,ptr)) return 1;
+  if(flags&FLAG_TIP){
     if(current){
-      FXString optionhelp=current->getHelpText();
-      if(!optionhelp.empty()){
-        sender->handle(this,MKUINT(ID_SETSTRINGVALUE,SEL_COMMAND),(void*)&optionhelp);
+      FXString optiontip=current->getTipText();
+      if(!optiontip.empty()){
+        sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&optiontip);
         return 1;
         }
       }
-    if(!help.empty()){
-      sender->handle(this,MKUINT(ID_SETSTRINGVALUE,SEL_COMMAND),(void*)&help);
+    if(!tip.empty()){
+      sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&tip);
       return 1;
       }
     }
@@ -697,19 +705,20 @@ long FXOptionMenu::onQueryHelp(FXObject* sender,FXSelector,void*){
   }
 
 
-// The current option's tip is returned, unless there is no tip,
-// in which case the option menu's tip is returned
-long FXOptionMenu::onQueryTip(FXObject* sender,FXSelector,void*){
-  if(flags&FLAG_TIP){
+// The current option's help is returned, unless there is no help,
+// in which case the option menu's help is returned
+long FXOptionMenu::onQueryHelp(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXWindow::onQueryTip(sender,sel,ptr)) return 1;
+  if(flags&FLAG_HELP){
     if(current){
-      FXString optiontip=current->getTipText();
-      if(!optiontip.empty()){
-        sender->handle(this,MKUINT(ID_SETSTRINGVALUE,SEL_COMMAND),(void*)&optiontip);
+      FXString optionhelp=current->getHelpText();
+      if(!optionhelp.empty()){
+        sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&optionhelp);
         return 1;
         }
       }
-    if(!tip.empty()){
-      sender->handle(this,MKUINT(ID_SETSTRINGVALUE,SEL_COMMAND),(void*)&tip);
+    if(!help.empty()){
+      sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&help);
       return 1;
       }
     }
@@ -741,7 +750,8 @@ void FXOptionMenu::load(FXStream& store){
 
 // Delete it
 FXOptionMenu::~FXOptionMenu(){
-  pane=(FXPopup*)-1;
-  current=(FXOption*)-1;
+  pane=(FXPopup*)-1L;
+  current=(FXOption*)-1L;
   }
 
+}

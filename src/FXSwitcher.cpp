@@ -3,7 +3,7 @@
 *                      S w i t c h   P a n e l   C l a s s                      *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXSwitcher.cpp,v 1.17.4.1 2003/06/20 19:02:07 fox Exp $                   *
+* $Id: FXSwitcher.cpp,v 1.32 2005/01/16 16:06:07 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -48,16 +50,19 @@
 // Switcher styles
 #define SWITCHER_MASK (SWITCHER_HCOLLAPSE|SWITCHER_VCOLLAPSE)
 
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXSwitcher) FXSwitcherMap[]={
   FXMAPFUNC(SEL_PAINT,0,FXSwitcher::onPaint),
   FXMAPFUNCS(SEL_UPDATE,FXSwitcher::ID_OPEN_FIRST,FXSwitcher::ID_OPEN_LAST,FXSwitcher::onUpdOpen),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_SETVALUE,FXSwitcher::onCmdSetValue),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_SETINTVALUE,FXSwitcher::onCmdSetIntValue),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_GETINTVALUE,FXSwitcher::onCmdGetIntValue),
+  FXMAPFUNC(SEL_COMMAND,FXSwitcher::ID_SETVALUE,FXSwitcher::onCmdSetValue),
+  FXMAPFUNC(SEL_COMMAND,FXSwitcher::ID_SETINTVALUE,FXSwitcher::onCmdSetIntValue),
+  FXMAPFUNC(SEL_COMMAND,FXSwitcher::ID_GETINTVALUE,FXSwitcher::onCmdGetIntValue),
   FXMAPFUNCS(SEL_COMMAND,FXSwitcher::ID_OPEN_FIRST,FXSwitcher::ID_OPEN_LAST,FXSwitcher::onCmdOpen),
   };
 
@@ -87,7 +92,7 @@ long FXSwitcher::onPaint(FXObject*,FXSelector,void* ptr){
 
 // Update value from a message
 long FXSwitcher::onCmdSetValue(FXObject*,FXSelector,void* ptr){
-  setCurrent((FXint)(FXival)ptr);
+  setCurrent((FXint)(FXuval)ptr);
   return 1;
   }
 
@@ -108,15 +113,14 @@ long FXSwitcher::onCmdGetIntValue(FXObject*,FXSelector,void* ptr){
 
 // Bring nth to the top
 long FXSwitcher::onCmdOpen(FXObject*,FXSelector sel,void*){
-  setCurrent(SELID(sel)-ID_OPEN_FIRST,TRUE);
+  setCurrent(FXSELID(sel)-ID_OPEN_FIRST,TRUE);
   return 1;
   }
 
 
 // Update the nth button
 long FXSwitcher::onUpdOpen(FXObject* sender,FXSelector sel,void* ptr){
-  FXuint msg=((SELID(sel)-ID_OPEN_FIRST)==current) ? ID_CHECK : ID_UNCHECK;
-  sender->handle(this,MKUINT(msg,SEL_COMMAND),ptr);
+  sender->handle(this,((FXSELID(sel)-ID_OPEN_FIRST)==current) ? FXSEL(SEL_COMMAND,ID_CHECK) : FXSEL(SEL_COMMAND,ID_UNCHECK),ptr);
   return 1;
   }
 
@@ -170,10 +174,10 @@ void FXSwitcher::layout(){
 
 // Set current subwindow
 void FXSwitcher::setCurrent(FXint panel,FXbool notify){
-  if(0<=panel && current!=panel){
+  if(0<=panel && panel<numChildren() && current!=panel){
     current=panel;
-    if(notify && target){ target->handle(this,MKUINT(message,SEL_COMMAND),(void*)(FXival)current); }
     recalc();
+    if(notify && target){ target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)current); }
     }
   }
 
@@ -206,3 +210,5 @@ void FXSwitcher::load(FXStream& store){
   FXPacker::load(store);
   store >> current;
   }
+
+}

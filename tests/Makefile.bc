@@ -3,9 +3,9 @@
 #                       FOX:  A Free C++ Class Library for X                 #
 #                                                                            #
 ##############################################################################
-# Copyright (C) 1997 by Jeroen van der Zijp.   All Rights Reserved.          #
+# Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.     #
 ##############################################################################
-# $Id: Makefile.bc,v 1.14 2001/12/13 18:41:32 jeroen Exp $                   #
+# $Id: Makefile.bc,v 1.22 2005/02/04 04:33:19 fox Exp $                      #
 ##############################################################################
 # This library is free software; you can redistribute it and/or              #
 # modify it under the terms of the GNU Library General Public                #
@@ -27,16 +27,18 @@ CXX       = bcc32
 CXXFLAGS  = -5 -O2 -w-par -w-csu -w-aus
 RM        = del
 TOPDIR    = ..
-DEFINES   = -DNDEBUG -DFOX_BIGENDIAN=0 -DWIN32 -D_WINDOWS -DHAVE_OPENGL #-DHAVE_PNG_H -DHAVE_JPEG_H -DHAVE_TIFF_H -DXMD_H
+DEFINES   = -DNDEBUG -DFOX_BIGENDIAN=0 -DWIN32 -D_WINDOWS -DHAVE_GL_H -DHAVE_GLU_H #-DHAVE_PNG_H -DHAVE_JPEG_H -DHAVE_TIFF_H -DXMD_H
 LD	  = bcc32
 LDFLAGS	  = -laa
 GLLIBS    = -lopengl32 -lglu32
 INCDIRS   = -I$(TOPDIR)\include
-FOXLIB    = $(TOPDIR)\src\fox.lib
+FOXLIB    = $(TOPDIR)\src\FOX-1.4.lib
 
 PROGRAMS  = \
+	ControlPanel.exe \
 	rex.exe \
 	minheritance.exe \
+	memmap.exe \
 	mditest.exe \
 	table.exe \
 	groupbox.exe \
@@ -58,6 +60,7 @@ PROGRAMS  = \
 	dctest.exe \
 	glviewer.exe \
 	gltest.exe \
+	wizard.exe \
 	imageviewer.exe
 
 .cpp.obj:
@@ -65,11 +68,20 @@ PROGRAMS  = \
 
 all: $(PROGRAMS)
 
+ControlPanel.exe: $(FOXLIB) ControlPanel.obj
+	$(LD) $(LDFLAGS) ControlPanel.obj $(FOXLIB)
+
 rex.exe: $(FOXLIB) rex.obj
 	$(LD) $(LDFLAGS) rex.obj $(FOXLIB)
 
 minheritance.exe: $(FOXLIB) minheritance.obj
 	$(LD) $(LDFLAGS) minheritance.obj $(FOXLIB)
+
+memmap.exe: $(FOXLIB) memmap.obj
+	$(LD) $(LDFLAGS) memmap.obj $(FOXLIB)
+
+wizard.exe: $(FOXLIB) wizard.obj
+	$(LD) $(LDFLAGS) wizard.obj $(FOXLIB)
 
 foursplit.exe: $(FOXLIB) foursplit.obj
 	$(LD) $(LDFLAGS) foursplit.obj $(FOXLIB)

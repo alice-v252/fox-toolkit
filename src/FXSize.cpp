@@ -3,7 +3,7 @@
 *                               S i z e    C l a s s                            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1994,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1994,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,16 +19,21 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXSize.cpp,v 1.3 2002/01/18 22:43:04 jeroen Exp $                        *
+* $Id: FXSize.cpp,v 1.9 2005/01/16 16:06:07 fox Exp $                           *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxpriv.h"
+#include "FXHash.h"
 #include "FXStream.h"
 #include "FXSize.h"
 
+using namespace FX;
 
+/*******************************************************************************/
+
+namespace FX {
 
 // Save object to a stream
 FXStream& operator<<(FXStream& store,const FXSize& s){
@@ -42,3 +47,4 @@ FXStream& operator>>(FXStream& store,FXSize& s){
   return store;
   }
 
+}

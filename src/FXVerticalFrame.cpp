@@ -3,7 +3,7 @@
 *                 V e r t i c a l   C o n t a i n e r   O b j e c t             *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXVerticalFrame.cpp,v 1.13.4.1 2003/09/18 13:54:29 fox Exp $              *
+* $Id: FXVerticalFrame.cpp,v 1.23 2005/01/16 16:06:07 fox Exp $                 *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -42,9 +44,12 @@
   - Tabbing order takes widget layout into account
 */
 
+using namespace FX;
 
 
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXVerticalFrame) FXVerticalFrameMap[]={
@@ -116,16 +121,14 @@ FXint FXVerticalFrame::getDefaultHeight(){
 
 // Recalculate layout
 void FXVerticalFrame::layout(){
-  FXint left,right,top,bottom;
-  FXint mw=0,mh=0;
-  FXint remain,extra_space,total_space,t;
-  FXint x,y,w,h;
-  FXint numc=0;
-  FXint sumexpand=0;
-  FXint numexpand=0;
-  FXint e=0;
-  FXuint hints;
-  FXWindow* child;
+  register FXint left,right,top,bottom,remain,extra_space,total_space,t,x,y,w,h;
+  register FXWindow* child;
+  register FXint sumexpand=0;
+  register FXint numexpand=0;
+  register FXint mw=0;
+  register FXint mh=0;
+  register FXint e=0;
+  register FXuint hints;
 
   // Placement rectangle; right/bottom non-inclusive
   left=border+padleft;
@@ -154,13 +157,13 @@ void FXVerticalFrame::layout(){
         else{
           remain-=h;
           }
-        numc++;
+        remain-=vspacing;
         }
       }
     }
 
-  // Child spacing
-  if(numc>1) remain-=vspacing*(numc-1);
+  // Child spacing correction
+  remain+=vspacing;
 
   // Do the layout
   for(child=getFirst(); child; child=child->getNext()){
@@ -222,7 +225,7 @@ void FXVerticalFrame::layout(){
           y=bottom-h-extra_space;
           bottom=bottom-h-hspacing-total_space;
           }
-        else{/*hints&LAYOUT_TOP*/
+        else{
           y=top+extra_space;
           top=top+h+vspacing+total_space;
           }
@@ -232,4 +235,6 @@ void FXVerticalFrame::layout(){
     }
   flags&=~FLAG_DIRTY;
   }
+
+}
 

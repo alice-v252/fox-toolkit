@@ -3,7 +3,7 @@
 *              H o r i z o n t a l   C o n t a i n e r   O b j e c t            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2002 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXHorizontalFrame.cpp,v 1.13.4.1 2003/09/18 13:54:29 fox Exp $            *
+* $Id: FXHorizontalFrame.cpp,v 1.23 2005/01/16 16:06:07 fox Exp $               *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -43,9 +45,11 @@
 */
 
 
-
+using namespace FX;
 
 /*******************************************************************************/
+
+namespace FX {
 
 // Map
 FXDEFMAP(FXHorizontalFrame) FXHorizontalFrameMap[]={
@@ -117,16 +121,14 @@ FXint FXHorizontalFrame::getDefaultHeight(){
 
 // Recalculate layout
 void FXHorizontalFrame::layout(){
-  FXint left,right,top,bottom;
-  FXint mw=0,mh=0;
-  FXint remain,extra_space,total_space,t;
-  FXint x,y,w,h;
-  FXint numc=0;
-  FXint sumexpand=0;
-  FXint numexpand=0;
-  FXint e=0;
-  FXuint hints;
-  FXWindow* child;
+  register FXint left,right,top,bottom,remain,extra_space,total_space,t,x,y,w,h;
+  register FXWindow* child;
+  register FXint sumexpand=0;
+  register FXint numexpand=0;
+  register FXint mw=0;
+  register FXint mh=0;
+  register FXint e=0;
+  register FXuint hints;
 
   // Placement rectangle; right/bottom non-inclusive
   left=border+padleft;
@@ -155,13 +157,13 @@ void FXHorizontalFrame::layout(){
         else{
           remain-=w;
           }
-        numc++;
+        remain-=hspacing;
         }
       }
     }
 
-  // Child spacing
-  if(numc>1) remain-=hspacing*(numc-1);
+  // Child spacing correction
+  remain+=hspacing;
 
   // Do the layout
   for(child=getFirst(); child; child=child->getNext()){
@@ -223,7 +225,7 @@ void FXHorizontalFrame::layout(){
           x=right-w-extra_space;
           right=right-w-hspacing-total_space;
           }
-        else{/*hints&LAYOUT_LEFT*/
+        else{
           x=left+extra_space;
           left=left+w+hspacing+total_space;
           }
@@ -234,4 +236,5 @@ void FXHorizontalFrame::layout(){
   flags&=~FLAG_DIRTY;
   }
 
+}
 
