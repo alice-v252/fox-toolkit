@@ -3,7 +3,7 @@
 *                        I C O   I c o n   O b j e c t                          *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2001,2004 by Janusz Ganczarski.   All Rights Reserved.          *
+* Copyright (C) 2001,2006 by Janusz Ganczarski.   All Rights Reserved.          *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXICOIcon.cpp,v 1.17 2004/02/08 17:29:06 fox Exp $                       *
+* $Id: FXICOIcon.cpp,v 1.27 2006/01/22 17:58:31 fox Exp $                       *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXMemoryStream.h"
 #include "FXStream.h"
 #include "FXString.h"
@@ -31,7 +33,6 @@
 #include "FXPoint.h"
 #include "FXRectangle.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXICOIcon.h"
 
@@ -46,13 +47,21 @@ using namespace FX;
 
 namespace FX {
 
+
+// Suggested file extension
+const FXchar FXICOIcon::fileExt[]="ico";
+
+
+// Suggested mime type
+const FXchar FXICOIcon::mimeType[]="image/ico";
+
+
 // Object implementation
 FXIMPLEMENT(FXICOIcon,FXIcon,NULL,0)
 
 
 // Initialize nicely
-FXICOIcon::FXICOIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FXint h):
-  FXIcon(a,NULL,clr,opts,w,h){
+FXICOIcon::FXICOIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FXint h):FXIcon(a,NULL,clr,opts,w,h){
   if(pix){
     FXMemoryStream ms;
     ms.open(FXStreamLoad,(FXuchar*)pix);
@@ -63,20 +72,23 @@ FXICOIcon::FXICOIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FX
 
 
 // Save object to stream
-FXbool FXICOIcon::savePixels(FXStream& store) const {
-  if(!fxsaveICO(store,data,width,height,0,0)) return FALSE;
-  return TRUE;
+bool FXICOIcon::savePixels(FXStream& store) const {
+  if(fxsaveICO(store,data,width,height,0,0)){
+    return true;
+    }
+  return false;
   }
 
 
 // Load object from stream
-FXbool FXICOIcon::loadPixels(FXStream& store){
-  FXint hotx,hoty;
-  if(options&IMAGE_OWNED){FXFREE(&data);}
-  if(!fxloadICO(store,data,width,height,hotx,hoty)) return FALSE;
-  if(options&IMAGE_ALPHAGUESS) transp=guesstransp();
-  options|=IMAGE_OWNED;
-  return TRUE;
+bool FXICOIcon::loadPixels(FXStream& store){
+  FXColor *pixels; FXint w,h,hotx,hoty;
+  if(fxloadICO(store,pixels,w,h,hotx,hoty)){
+    setData(pixels,IMAGE_OWNED,w,h);
+    if(options&IMAGE_ALPHAGUESS) transp=guesstransp();
+    return true;
+    }
+  return false;
   }
 
 
@@ -85,4 +97,3 @@ FXICOIcon::~FXICOIcon(){
   }
 
 }
-

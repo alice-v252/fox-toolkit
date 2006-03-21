@@ -3,7 +3,7 @@
 *                    F o l d i n g   L i s t   W i d g e t                      *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,19 +19,23 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXFoldingList.cpp,v 1.39 2004/04/30 03:44:51 fox Exp $                   *
+* $Id: FXFoldingList.cpp,v 1.66 2006/02/17 03:06:59 fox Exp $                   *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "fxascii.h"
+#include "fxunicode.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
+#include "FXObjectList.h"
 #include "FXRectangle.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXDCWindow.h"
 #include "FXFont.h"
@@ -54,6 +58,8 @@
   - Maybe moving (dragging) items around in the treelist is something that should
     be supported?
   - Click outside of list perhaps should also change current item?
+  - Since '\0' is no longer special in FXString, perhaps we can replace the function
+    of '\t' with '\0'.  This would be significantly more efficient.
 */
 
 
@@ -123,7 +129,7 @@ void FXFoldingItem::draw(const FXFoldingList* list,FXDC& dc,FXint x,FXint y,FXin
         drw=end-beg;
         tw=font->getTextWidth(&label[beg],drw);
         if(tw>space-4){
-          while((tw=font->getTextWidth(&label[beg],drw))+dw>space-4 && drw>1) drw--;
+          while((tw=font->getTextWidth(&label[beg],drw))+dw>space-4 && drw>1) drw=label.dec(drw);
           dc.setClipRectangle(xx,y,space,h);
           dc.drawText(xx+2,yt+font->getFontAscent()+2,&label[beg],drw);
           dc.drawText(xx+tw+2,yt+font->getFontAscent()+2,"...",3);
@@ -209,9 +215,36 @@ void FXFoldingItem::setDraggable(FXbool draggable){
   if(draggable) state|=DRAGGABLE; else state&=~DRAGGABLE;
   }
 
-// Icons owner by item
-void FXFoldingItem::setIconOwned(FXuint owned){
-  state=(state&~(OPENICONOWNED|CLOSEDICONOWNED))|(owned&(OPENICONOWNED|CLOSEDICONOWNED));
+
+// Change item label
+void FXFoldingItem::setText(const FXString& txt){
+  label=txt;
+  }
+
+
+// Change item's open icon
+void FXFoldingItem::setOpenIcon(FXIcon* icn,FXbool owned){
+  if(openIcon && (state&OPENICONOWNED)){
+    if(openIcon!=icn) delete openIcon;
+    state&=~OPENICONOWNED;
+    }
+  openIcon=icn;
+  if(openIcon && owned){
+    state|=OPENICONOWNED;
+    }
+  }
+
+
+// Change item's mini icon
+void FXFoldingItem::setClosedIcon(FXIcon* icn,FXbool owned){
+  if(closedIcon && (state&CLOSEDICONOWNED)){
+    if(closedIcon!=icn) delete closedIcon;
+    state&=~CLOSEDICONOWNED;
+    }
+  closedIcon=icn;
+  if(closedIcon && owned){
+    state|=CLOSEDICONOWNED;
+    }
   }
 
 
@@ -366,14 +399,13 @@ FXDEFMAP(FXFoldingList) FXFoldingListMap[]={
   FXMAPFUNC(SEL_LEAVE,0,FXFoldingList::onLeave),
   FXMAPFUNC(SEL_FOCUSIN,0,FXFoldingList::onFocusIn),
   FXMAPFUNC(SEL_FOCUSOUT,0,FXFoldingList::onFocusOut),
+  FXMAPFUNC(SEL_QUERY_TIP,0,FXFoldingList::onQueryTip),
+  FXMAPFUNC(SEL_QUERY_HELP,0,FXFoldingList::onQueryHelp),
   FXMAPFUNC(SEL_CLICKED,0,FXFoldingList::onClicked),
   FXMAPFUNC(SEL_DOUBLECLICKED,0,FXFoldingList::onDoubleClicked),
   FXMAPFUNC(SEL_TRIPLECLICKED,0,FXFoldingList::onTripleClicked),
   FXMAPFUNC(SEL_COMMAND,0,FXFoldingList::onCommand),
   FXMAPFUNC(SEL_CHANGED,FXFoldingList::ID_HEADER_CHANGE,FXFoldingList::onHeaderChanged),
-//  FXMAPFUNC(SEL_CLICKED,FXFoldingList::ID_HEADER_CHANGE,FXFoldingList::onHeaderResize),
-  FXMAPFUNC(SEL_UPDATE,FXWindow::ID_QUERY_TIP,FXFoldingList::onQueryTip),
-  FXMAPFUNC(SEL_UPDATE,FXWindow::ID_QUERY_HELP,FXFoldingList::onQueryHelp),
   };
 
 
@@ -394,6 +426,7 @@ FXFoldingList::FXFoldingList(){
   currentitem=NULL;
   extentitem=NULL;
   cursoritem=NULL;
+  viewableitem=NULL;
   font=(FXFont*)-1L;
   sortfunc=NULL;
   textColor=0;
@@ -414,7 +447,7 @@ FXFoldingList::FXFoldingList(){
 FXFoldingList::FXFoldingList(FXComposite *p,FXObject* tgt,FXSelector sel,FXuint opts,FXint x,FXint y,FXint w,FXint h):
   FXScrollArea(p,opts,x,y,w,h){
   flags|=FLAG_ENABLED;
-  header=new FXHeader(this,this,FXFoldingList::ID_HEADER_CHANGE,HEADER_TRACKING|HEADER_BUTTON|FRAME_RAISED|FRAME_THICK);
+  header=new FXHeader(this,this,FXFoldingList::ID_HEADER_CHANGE,HEADER_TRACKING|HEADER_BUTTON|HEADER_RESIZE|FRAME_RAISED|FRAME_THICK);
   target=tgt;
   message=sel;
   firstitem=NULL;
@@ -423,6 +456,7 @@ FXFoldingList::FXFoldingList(FXComposite *p,FXObject* tgt,FXSelector sel,FXuint 
   currentitem=NULL;
   extentitem=NULL;
   cursoritem=NULL;
+  viewableitem=NULL;
   font=getApp()->getNormalFont();
   sortfunc=NULL;
   textColor=getApp()->getForeColor();
@@ -468,7 +502,7 @@ void FXFoldingList::detach(){
 
 
 // Can have focus
-FXbool FXFoldingList::canFocus() const { return TRUE; }
+bool FXFoldingList::canFocus() const { return true; }
 
 
 // Into focus chain
@@ -598,6 +632,11 @@ void FXFoldingList::layout(){
     horizontal->setLine(firstitem->getWidth(this)/10);
     }
 
+  // We were supposed to make this item viewable
+  if(viewableitem){
+    makeItemVisible(viewableitem);
+    }
+
   // Force repaint
   update();
 
@@ -612,6 +651,19 @@ long FXFoldingList::onHeaderChanged(FXObject*,FXSelector,void*){
   return 1;
   }
 
+
+// Set headers from array of strings
+void FXFoldingList::setHeaders(const FXchar** strings,FXint size){
+  header->clearItems();
+  header->fillItems(strings,NULL,size);
+  }
+
+
+// Set headers from newline separated strings
+void FXFoldingList::setHeaders(const FXString& strings,FXint size){
+  header->clearItems();
+  header->fillItems(strings,NULL,size);
+  }
 
 // Append header caption
 void FXFoldingList::appendHeader(const FXString& text,FXIcon *icon,FXint size){
@@ -692,12 +744,10 @@ FXString FXFoldingList::getItemText(const FXFoldingItem* item) const {
 
 
 // Set item open icon
-void FXFoldingList::setItemOpenIcon(FXFoldingItem* item,FXIcon* icon){
+void FXFoldingList::setItemOpenIcon(FXFoldingItem* item,FXIcon* icon,FXbool owned){
   if(item==NULL){ fxerror("%s::setItemOpenIcon: item is NULL.\n",getClassName()); }
-  if(item->getOpenIcon()!=icon){
-    item->setOpenIcon(icon);
-    recalc();
-    }
+  if(item->getOpenIcon()!=icon) recalc();
+  item->setOpenIcon(icon,owned);
   }
 
 
@@ -709,12 +759,10 @@ FXIcon* FXFoldingList::getItemOpenIcon(const FXFoldingItem* item) const {
 
 
 // Set item closed icon
-void FXFoldingList::setItemClosedIcon(FXFoldingItem* item,FXIcon* icon){
+void FXFoldingList::setItemClosedIcon(FXFoldingItem* item,FXIcon* icon,FXbool owned){
   if(item==NULL){ fxerror("%s::setItemClosedIcon: item is NULL.\n",getClassName()); }
-  if(item->getClosedIcon()!=icon){
-    item->setClosedIcon(icon);
-    recalc();
-    }
+  if(item->getClosedIcon()!=icon) recalc();
+  item->setClosedIcon(icon,owned);
   }
 
 
@@ -795,6 +843,9 @@ void FXFoldingList::makeItemVisible(FXFoldingItem* item){
   register FXint y,h;
   if(item){
 
+    // Remember for later
+    viewableitem=item;
+
     // Expand parents of this node
     if(!(options&FOLDINGLIST_AUTOSELECT)){
       for(par=item->parent; par; par=par->parent){
@@ -814,7 +865,11 @@ void FXFoldingList::makeItemVisible(FXFoldingItem* item){
       if(viewport_h<=y+item->y+h+hh) y=viewport_h-item->y-h-hh;
       if(y+item->y<=0) y=-item->y;
 
+      // Scroll into view
       setPosition(pos_x,y);
+
+      // Done it
+      viewableitem=NULL;
       }
     }
   }
@@ -912,7 +967,7 @@ FXbool FXFoldingList::selectItem(FXFoldingItem* item,FXbool notify){
       case FOLDINGLIST_MULTIPLESELECT:
         item->setSelected(TRUE);
         updateItem(item);
-        if(notify && target){target->handle(this,FXSEL(SEL_SELECTED,message),(void*)item);}
+        if(notify && target){target->tryHandle(this,FXSEL(SEL_SELECTED,message),(void*)item);}
         break;
       }
     return TRUE;
@@ -931,7 +986,7 @@ FXbool FXFoldingList::deselectItem(FXFoldingItem* item,FXbool notify){
       case FOLDINGLIST_SINGLESELECT:
         item->setSelected(FALSE);
         updateItem(item);
-        if(notify && target){target->handle(this,FXSEL(SEL_DESELECTED,message),(void*)item);}
+        if(notify && target){target->tryHandle(this,FXSEL(SEL_DESELECTED,message),(void*)item);}
         break;
       }
     return TRUE;
@@ -949,7 +1004,7 @@ FXbool FXFoldingList::toggleItem(FXFoldingItem* item,FXbool notify){
         killSelection(notify);
         item->setSelected(TRUE);
         updateItem(item);
-        if(notify && target){target->handle(this,FXSEL(SEL_SELECTED,message),(void*)item);}
+        if(notify && target){target->tryHandle(this,FXSEL(SEL_SELECTED,message),(void*)item);}
         }
       break;
     case FOLDINGLIST_SINGLESELECT:
@@ -957,12 +1012,12 @@ FXbool FXFoldingList::toggleItem(FXFoldingItem* item,FXbool notify){
         killSelection(notify);
         item->setSelected(TRUE);
         updateItem(item);
-        if(notify && target){target->handle(this,FXSEL(SEL_SELECTED,message),(void*)item);}
+        if(notify && target){target->tryHandle(this,FXSEL(SEL_SELECTED,message),(void*)item);}
         }
       else{
         item->setSelected(FALSE);
         updateItem(item);
-        if(notify && target){target->handle(this,FXSEL(SEL_DESELECTED,message),(void*)item);}
+        if(notify && target){target->tryHandle(this,FXSEL(SEL_DESELECTED,message),(void*)item);}
         }
       break;
     case FOLDINGLIST_EXTENDEDSELECT:
@@ -970,12 +1025,12 @@ FXbool FXFoldingList::toggleItem(FXFoldingItem* item,FXbool notify){
       if(!item->isSelected()){
         item->setSelected(TRUE);
         updateItem(item);
-        if(notify && target){target->handle(this,FXSEL(SEL_SELECTED,message),(void*)item);}
+        if(notify && target){target->tryHandle(this,FXSEL(SEL_SELECTED,message),(void*)item);}
         }
       else{
         item->setSelected(FALSE);
         updateItem(item);
-        if(notify && target){target->handle(this,FXSEL(SEL_DESELECTED,message),(void*)item);}
+        if(notify && target){target->tryHandle(this,FXSEL(SEL_DESELECTED,message),(void*)item);}
         }
       break;
     }
@@ -1013,7 +1068,7 @@ FXbool FXFoldingList::extendSelection(FXFoldingItem* item,FXbool notify){
           it->setSelected(TRUE);
           updateItem(it);
           changes=TRUE;
-          if(notify && target){target->handle(this,FXSEL(SEL_SELECTED,message),(void*)it);}
+          if(notify && target){target->tryHandle(this,FXSEL(SEL_SELECTED,message),(void*)it);}
           }
         }
 
@@ -1024,7 +1079,7 @@ FXbool FXFoldingList::extendSelection(FXFoldingItem* item,FXbool notify){
           it->setSelected(FALSE);
           updateItem(it);
           changes=TRUE;
-          if(notify && target){target->handle(this,FXSEL(SEL_DESELECTED,message),(void*)it);}
+          if(notify && target){target->tryHandle(this,FXSEL(SEL_DESELECTED,message),(void*)it);}
           }
         }
       it=it->getBelow();
@@ -1042,7 +1097,7 @@ FXbool FXFoldingList::extendSelection(FXFoldingItem* item,FXbool notify){
           it->setSelected(TRUE);
           updateItem(it);
           changes=TRUE;
-          if(notify && target){target->handle(this,FXSEL(SEL_SELECTED,message),(void*)it);}
+          if(notify && target){target->tryHandle(this,FXSEL(SEL_SELECTED,message),(void*)it);}
           }
         }
 
@@ -1053,7 +1108,7 @@ FXbool FXFoldingList::extendSelection(FXFoldingItem* item,FXbool notify){
           it->setSelected(FALSE);
           updateItem(it);
           changes=TRUE;
-          if(notify && target){target->handle(this,FXSEL(SEL_DESELECTED,message),(void*)it);}
+          if(notify && target){target->tryHandle(this,FXSEL(SEL_DESELECTED,message),(void*)it);}
           }
         }
       }
@@ -1072,7 +1127,7 @@ FXbool FXFoldingList::killSelection(FXbool notify){
       item->setSelected(FALSE);
       updateItem(item);
       changes=TRUE;
-      if(notify && target){target->handle(this,FXSEL(SEL_DESELECTED,message),(void*)item);}
+      if(notify && target){target->tryHandle(this,FXSEL(SEL_DESELECTED,message),(void*)item);}
       }
     item=item->getBelow();
     }
@@ -1086,7 +1141,7 @@ FXbool FXFoldingList::openItem(FXFoldingItem* item,FXbool notify){
   if(!item->isOpened()){
     item->setOpened(TRUE);
     updateItem(item);
-    if(notify && target){target->handle(this,FXSEL(SEL_OPENED,message),(void*)item);}
+    if(notify && target){target->tryHandle(this,FXSEL(SEL_OPENED,message),(void*)item);}
     return TRUE;
     }
   return FALSE;
@@ -1099,7 +1154,7 @@ FXbool FXFoldingList::closeItem(FXFoldingItem* item,FXbool notify){
   if(item->isOpened()){
     item->setOpened(FALSE);
     updateItem(item);
-    if(notify && target){target->handle(this,FXSEL(SEL_CLOSED,message),(void*)item);}
+    if(notify && target){target->tryHandle(this,FXSEL(SEL_CLOSED,message),(void*)item);}
     return TRUE;
     }
   return FALSE;
@@ -1119,7 +1174,7 @@ FXbool FXFoldingList::collapseTree(FXFoldingItem* tree,FXbool notify){
         updateItem(tree);
         }
       }
-    if(notify && target){target->handle(this,FXSEL(SEL_COLLAPSED,message),(void*)tree);}
+    if(notify && target){target->tryHandle(this,FXSEL(SEL_COLLAPSED,message),(void*)tree);}
     return TRUE;
     }
   return FALSE;
@@ -1139,7 +1194,7 @@ FXbool FXFoldingList::expandTree(FXFoldingItem* tree,FXbool notify){
         updateItem(tree);
         }
       }
-    if(notify && target){target->handle(this,FXSEL(SEL_EXPANDED,message),(void*)tree);}
+    if(notify && target){target->tryHandle(this,FXSEL(SEL_EXPANDED,message),(void*)tree);}
     return TRUE;
     }
   return FALSE;
@@ -1173,10 +1228,11 @@ long FXFoldingList::onTipTimer(FXObject*,FXSelector,void*){
 
 
 // We were asked about tip text
-long FXFoldingList::onQueryTip(FXObject* sender,FXSelector,void*){
-  FXint x,y; FXuint state;
+long FXFoldingList::onQueryTip(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXWindow::onQueryTip(sender,sel,ptr)) return 1;
   if((flags&FLAG_TIP) && !(options&FOLDINGLIST_AUTOSELECT)){   // No tip when autoselect!
-    getCursorPosition(x,y,state);
+    FXint x,y; FXuint buttons;
+    getCursorPosition(x,y,buttons);
     FXFoldingItem *item=getItemAt(x,y);
     if(item){
       FXString string=item->getText().section('\t',0);
@@ -1189,8 +1245,9 @@ long FXFoldingList::onQueryTip(FXObject* sender,FXSelector,void*){
 
 
 // We were asked about status text
-long FXFoldingList::onQueryHelp(FXObject* sender,FXSelector,void*){
-  if(!help.empty() && (flags&FLAG_HELP)){
+long FXFoldingList::onQueryHelp(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXWindow::onQueryHelp(sender,sel,ptr)) return 1;
+  if((flags&FLAG_HELP) && !help.empty()){
     sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&help);
     return 1;
     }
@@ -1324,9 +1381,11 @@ long FXFoldingList::onLookupTimer(FXObject*,FXSelector,void*){
 long FXFoldingList::onKeyPress(FXObject*,FXSelector,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   FXFoldingItem *item=currentitem;
+  FXFoldingItem *succ;
+  FXint page;
   flags&=~FLAG_TIP;
   if(!isEnabled()) return 0;
-  if(target && target->handle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
+  if(target && target->tryHandle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
   if(item==NULL) item=firstitem;
   switch(event->code){
     case KEY_Control_L:
@@ -1339,14 +1398,32 @@ long FXFoldingList::onKeyPress(FXObject*,FXSelector,void* ptr){
       return 1;
     case KEY_Page_Up:
     case KEY_KP_Page_Up:
-      lookup=FXString::null;
-      setPosition(pos_x,pos_y+verticalScrollBar()->getPage());
-      return 1;
+      for(succ=item,page=verticalScrollBar()->getPage(); succ && 0<page; ){
+        item=succ;
+        page-=succ->getHeight(this);
+        if(succ->prev){
+          succ=succ->prev;
+          while(succ->last && ((options&FOLDINGLIST_AUTOSELECT) || succ->isExpanded())) succ=succ->last;
+          }
+        else if(succ->parent){
+          succ=succ->parent;
+          }
+        }
+      goto hop;
     case KEY_Page_Down:
     case KEY_KP_Page_Down:
-      lookup=FXString::null;
-      setPosition(pos_x,pos_y-verticalScrollBar()->getPage());
-      return 1;
+      for(succ=item,page=verticalScrollBar()->getPage(); succ && 0<page; ){
+        item=succ;
+        page-=succ->getHeight(this);
+        if(succ->first && ((options&FOLDINGLIST_AUTOSELECT) || succ->isExpanded())){
+          succ=succ->first;
+          }
+        else{
+          while(!succ->next && succ->parent) succ=succ->parent;
+          succ=succ->next;
+          }
+        }
+      goto hop;
     case KEY_Up:                          // Move up
     case KEY_KP_Up:
       if(item){
@@ -1493,7 +1570,7 @@ hop:  lookup=FXString::null;
     default:
       if((FXuchar)event->text[0]<' ') return 0;
       if(event->state&(CONTROLMASK|ALTMASK)) return 0;
-      if(!isprint((FXuchar)event->text[0])) return 0;
+      if(!Ascii::isPrint(event->text[0])) return 0;
       lookup.append(event->text);
       getApp()->addTimeout(this,ID_LOOKUPTIMER,getApp()->getTypingSpeed());
       item=findItem(lookup,currentitem,SEARCH_FORWARD|SEARCH_WRAP|SEARCH_PREFIX);
@@ -1522,7 +1599,7 @@ hop:  lookup=FXString::null;
 long FXFoldingList::onKeyRelease(FXObject*,FXSelector,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(!isEnabled()) return 0;
-  if(target && target->handle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
+  if(target && target->tryHandle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
   switch(event->code){
     case KEY_Shift_L:
     case KEY_Shift_R:
@@ -1662,7 +1739,7 @@ long FXFoldingList::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
     flags&=~FLAG_UPDATE;
 
     // First chance callback
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
 
     // Not autoselect mode
     if(options&FOLDINGLIST_AUTOSELECT) return 1;
@@ -1747,7 +1824,7 @@ long FXFoldingList::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
     flags&=~(FLAG_PRESSED|FLAG_TRYDRAG|FLAG_DODRAG);
 
     // First chance callback
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
 
     // No activity
     if(!(flg&FLAG_PRESSED) && !(options&FOLDINGLIST_AUTOSELECT)) return 1;
@@ -1813,7 +1890,7 @@ long FXFoldingList::onRightBtnPress(FXObject*,FXSelector,void* ptr){
   if(isEnabled()){
     grab();
     flags&=~FLAG_UPDATE;
-    if(target && target->handle(this,FXSEL(SEL_RIGHTBUTTONPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_RIGHTBUTTONPRESS,message),ptr)) return 1;
     flags|=FLAG_SCROLLING;
     grabx=event->win_x-pos_x;
     graby=event->win_y-pos_y;
@@ -1829,7 +1906,7 @@ long FXFoldingList::onRightBtnRelease(FXObject*,FXSelector,void* ptr){
     ungrab();
     flags&=~FLAG_SCROLLING;
     flags|=FLAG_UPDATE;
-    if(target && target->handle(this,FXSEL(SEL_RIGHTBUTTONRELEASE,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_RIGHTBUTTONRELEASE,message),ptr)) return 1;
     return 1;
     }
   return 0;
@@ -1849,13 +1926,13 @@ long FXFoldingList::onUngrabbed(FXObject* sender,FXSelector sel,void* ptr){
 
 // Command message
 long FXFoldingList::onCommand(FXObject*,FXSelector,void* ptr){
-  return target && target->handle(this,FXSEL(SEL_COMMAND,message),ptr);
+  return target && target->tryHandle(this,FXSEL(SEL_COMMAND,message),ptr);
   }
 
 
 // Clicked in list
 long FXFoldingList::onClicked(FXObject*,FXSelector,void* ptr){
-  return target && target->handle(this,FXSEL(SEL_CLICKED,message),ptr);
+  return target && target->tryHandle(this,FXSEL(SEL_CLICKED,message),ptr);
   }
 
 
@@ -1863,7 +1940,7 @@ long FXFoldingList::onClicked(FXObject*,FXSelector,void* ptr){
 long FXFoldingList::onDoubleClicked(FXObject*,FXSelector,void* ptr){
 
   // Double click anywhere in the widget
-  if(target && target->handle(this,FXSEL(SEL_DOUBLECLICKED,message),ptr)) return 1;
+  if(target && target->tryHandle(this,FXSEL(SEL_DOUBLECLICKED,message),ptr)) return 1;
 
   // Double click on an item
   if(ptr){
@@ -1878,49 +1955,65 @@ long FXFoldingList::onDoubleClicked(FXObject*,FXSelector,void* ptr){
 
 // Triple clicked in list; ptr may or may not point to an item
 long FXFoldingList::onTripleClicked(FXObject*,FXSelector,void* ptr){
-  return target && target->handle(this,FXSEL(SEL_TRIPLECLICKED,message),ptr);
+  return target && target->tryHandle(this,FXSEL(SEL_TRIPLECLICKED,message),ptr);
+  }
+
+
+// Compare sectioned strings
+FXint FXFoldingList::compareSection(const FXchar *p,const FXchar* q,FXint s){
+  register FXint c1,c2,x;
+  for(x=s; x && *p; x-=(*p++=='\t'));
+  for(x=s; x && *q; x-=(*q++=='\t'));
+  do{
+    c1=FXuchar(*p++);
+    c2=FXuchar(*q++);
+    }
+  while('\t'<c1 && (c1==c2));
+  return c1-c2;
+  }
+
+
+// Compare sectioned strings, case-insensitive
+FXint FXFoldingList::compareSectionCase(const FXchar *p,const FXchar* q,FXint s){
+  register FXint c1,c2,x;
+  for(x=s; x && *p; x-=(*p++=='\t'));
+  for(x=s; x && *q; x-=(*q++=='\t'));
+  do{
+    if((*p & 0x80) && (*q & 0x80)){
+      c1=Unicode::toLower(wc(p)); p+=wclen(p);
+      c2=Unicode::toLower(wc(q)); q+=wclen(q);
+      }
+    else{
+      c1=Ascii::toLower(*p); p+=1;
+      c2=Ascii::toLower(*q); q+=1;
+      }
+    }
+  while('\t'<c1 && (c1==c2));
+  return c1-c2;
   }
 
 
 // Sort items in ascending order
 FXint FXFoldingList::ascending(const FXFoldingItem* a,const FXFoldingItem* b){
-  register const FXuchar *p=(const FXuchar*)a->getText().text();
-  register const FXuchar *q=(const FXuchar*)b->getText().text();
-  while(1){
-    if(*p > *q) return 1;
-    if(*p < *q) return -1;
-    if(*p <= '\t') return 0;
-    p++;
-    q++;
-    }
-  return 0;
+  return compareSection(a->getText().text(),b->getText().text(),0);
   }
 
 
 // Sort items in descending order
 FXint FXFoldingList::descending(const FXFoldingItem* a,const FXFoldingItem* b){
-  return FXFoldingList::ascending(b,a);
+  return compareSection(b->getText().text(),a->getText().text(),0);
   }
 
 
 // Sort ascending order, case insensitive
 FXint FXFoldingList::ascendingCase(const FXFoldingItem* a,const FXFoldingItem* b){
-  register const FXuchar *p=(const FXuchar*)a->getText().text();
-  register const FXuchar *q=(const FXuchar*)b->getText().text();
-  while(1){
-    if(tolower((FXuchar)*p) > tolower((FXuchar)*q)) return 1;
-    if(tolower((FXuchar)*p) < tolower((FXuchar)*q)) return -1;
-    if(*p <= '\t') return 0;
-    p++;
-    q++;
-    }
-  return 0;
+  return compareSectionCase(a->getText().text(),b->getText().text(),0);
   }
 
 
 // Sort descending order, case insensitive
 FXint FXFoldingList::descendingCase(const FXFoldingItem* a,const FXFoldingItem* b){
-  return FXFoldingList::ascendingCase(b,a);
+  return compareSectionCase(b->getText().text(),a->getText().text(),0);
   }
 
 
@@ -2071,7 +2164,7 @@ void FXFoldingList::setCurrentItem(FXFoldingItem* item,FXbool notify){
       }
 
     // Notify item change
-    if(notify && target){target->handle(this,FXSEL(SEL_CHANGED,message),(void*)currentitem);}
+    if(notify && target){target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)currentitem);}
     }
 
   // Select if browse mode
@@ -2095,27 +2188,44 @@ FXFoldingItem* FXFoldingList::createItem(const FXString& text,FXIcon* oi,FXIcon*
   }
 
 
-// Add item as first one under parent p
-FXFoldingItem* FXFoldingList::addItemFirst(FXFoldingItem* p,FXFoldingItem* item,FXbool notify){
+// Insert item under father before other item
+FXFoldingItem* FXFoldingList::insertItem(FXFoldingItem* other,FXFoldingItem* father,FXFoldingItem* item,FXbool notify){
   register FXFoldingItem* olditem=currentitem;
 
-  // Must have item
-  if(!item){ fxerror("%s::addItemFirst: item is NULL.\n",getClassName()); }
+  // Verify correctness of arguments
+  if(!item){ fxerror("%s::insertItem: NULL item argument.\n",getClassName()); }
+  if(other && other->parent!=father){ fxerror("%s::insertItem: bad argument.\n",getClassName()); }
 
-  // Add item to list
-  if(p){
-    item->prev=NULL;
-    item->next=p->first;
-    if(item->next) item->next->prev=item; else p->last=item;
-    p->first=item;
+  // Hang item into the list
+  if(father){
+    if(other){
+      item->next=other;
+      item->prev=other->prev;
+      other->prev=item;
+      }
+    else{
+      item->next=NULL;
+      item->prev=father->last;
+      father->last=item;
+      }
+    if(item->prev) item->prev->next=item; else father->first=item;
     }
   else{
-    item->prev=NULL;
-    item->next=firstitem;
-    if(item->next) item->next->prev=item; else lastitem=item;
-    firstitem=item;
+    if(other){
+      item->next=other;
+      item->prev=other->prev;
+      other->prev=item;
+      }
+    else{
+      item->next=NULL;
+      item->prev=lastitem;
+      lastitem=item;
+      }
+    if(item->prev) item->prev->next=item; else firstitem=item;
     }
-  item->parent=p;
+
+  // Fill in the rest
+  item->parent=father;
   item->first=NULL;
   item->last=NULL;
   item->x=0;
@@ -2125,11 +2235,11 @@ FXFoldingItem* FXFoldingList::addItemFirst(FXFoldingItem* p,FXFoldingItem* item,
   if(!currentitem && item==lastitem) currentitem=item;
 
   // Notify item has been inserted
-  if(notify && target){target->handle(this,FXSEL(SEL_INSERTED,message),(void*)item);}
+  if(notify && target){target->tryHandle(this,FXSEL(SEL_INSERTED,message),(void*)item);}
 
   // Current item may have changed
   if(olditem!=currentitem){
-    if(notify && target){target->handle(this,FXSEL(SEL_CHANGED,message),(void*)currentitem);}
+    if(notify && target){target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)currentitem);}
     }
 
   // Was new item
@@ -2148,180 +2258,103 @@ FXFoldingItem* FXFoldingList::addItemFirst(FXFoldingItem* p,FXFoldingItem* item,
   }
 
 
-// Add item as first one under parent p
-FXFoldingItem* FXFoldingList::addItemFirst(FXFoldingItem* p,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr,FXbool notify){
-  return addItemFirst(p,createItem(text,oi,ci,ptr),notify);
+// Insert item under father before other item
+FXFoldingItem* FXFoldingList::insertItem(FXFoldingItem* other,FXFoldingItem* father,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr,FXbool notify){
+  return insertItem(other,father,createItem(text,oi,ci,ptr),notify);
   }
 
 
-// Add item as last one under parent p
-FXFoldingItem* FXFoldingList::addItemLast(FXFoldingItem* p,FXFoldingItem* item,FXbool notify){
-  register FXFoldingItem* olditem=currentitem;
+// Append item under father
+FXFoldingItem* FXFoldingList::appendItem(FXFoldingItem* father,FXFoldingItem* item,FXbool notify){
+  return insertItem(NULL,father,item,notify);
+  }
 
-  // Must have item
-  if(!item){ fxerror("%s::addItemLast: item is NULL.\n",getClassName()); }
 
-  // Add item to list
-  if(p){
-    item->prev=p->last;
-    item->next=NULL;
-    if(item->prev) item->prev->next=item; else p->first=item;
-    p->last=item;
-    }
-  else{
-    item->prev=lastitem;
-    item->next=NULL;
-    if(item->prev) item->prev->next=item; else firstitem=item;
-    lastitem=item;
-    }
-  item->parent=p;
-  item->first=NULL;
-  item->last=NULL;
-  item->x=0;
-  item->y=0;
+// Append item under father
+FXFoldingItem* FXFoldingList::appendItem(FXFoldingItem* father,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr,FXbool notify){
+  return insertItem(NULL,father,createItem(text,oi,ci,ptr),notify);
+  }
 
-  // Make current if just added
-  if(!currentitem && item==firstitem) currentitem=item;
 
-  // Notify item has been inserted
-  if(notify && target){target->handle(this,FXSEL(SEL_INSERTED,message),(void*)item);}
+// Prepend item under father
+FXFoldingItem* FXFoldingList::prependItem(FXFoldingItem* father,FXFoldingItem* item,FXbool notify){
+  return insertItem(father?father->first:firstitem,father,item,notify);
+  }
 
-  // Current item may have changed
-  if(olditem!=currentitem){
-    if(notify && target){target->handle(this,FXSEL(SEL_CHANGED,message),(void*)currentitem);}
-    }
+// Prepend item under father
+FXFoldingItem* FXFoldingList::prependItem(FXFoldingItem* father,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr,FXbool notify){
+  return insertItem(father?father->first:firstitem,father,createItem(text,oi,ci,ptr),notify);
+  }
 
-  // Was new item
-  if(currentitem==item){
-    if(hasFocus()){
-      currentitem->setFocus(TRUE);
-      }
-    if((options&SELECT_MASK)==FOLDINGLIST_BROWSESELECT && currentitem->isEnabled()){
-      selectItem(currentitem,notify);
+
+// Fill list by appending items from array of strings
+FXint FXFoldingList::fillItems(FXFoldingItem* father,const FXchar** strings,FXIcon* oi,FXIcon* ci,void* ptr,FXbool notify){
+  register FXint n=0;
+  if(strings){
+    while(strings[n]){
+      appendItem(father,strings[n++],oi,ci,ptr,notify);
       }
     }
-
-  // Redo layout
-  recalc();
-  return item;
+  return n;
   }
 
 
-// Add item as last one under parent p
-FXFoldingItem* FXFoldingList::addItemLast(FXFoldingItem* p,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr,FXbool notify){
-  return addItemLast(p,createItem(text,oi,ci,ptr),notify);
+// Fill list by appending items from newline separated strings
+FXint FXFoldingList::fillItems(FXFoldingItem* father,const FXString& strings,FXIcon* oi,FXIcon* ci,void* ptr,FXbool notify){
+  register FXint n=0;
+  FXString text;
+  while(!(text=strings.section('\n',n)).empty()){
+    appendItem(father,text,oi,ci,ptr,notify);
+    n++;
+    }
+  return n;
   }
 
 
-// Link item after other
-FXFoldingItem* FXFoldingList::addItemAfter(FXFoldingItem* other,FXFoldingItem* item,FXbool notify){
+// Move item under father before other item
+FXFoldingItem *FXFoldingList::moveItem(FXFoldingItem* other,FXFoldingItem* father,FXFoldingItem* item){
 
-  // Must have items
-  if(!item || !other){ fxerror("%s::addItemAfter: NULL argument.\n",getClassName()); }
+  // Verify arguments
+  if(!item){ fxerror("%s::moveItem: NULL item argument.\n",getClassName()); }
+  if(other && other->parent!=father){ fxerror("%s::moveItem: bad argument.\n",getClassName()); }
 
-  // Add item to list
-  item->prev=other;
-  item->next=other->next;
-  other->next=item;
-  if(item->next) item->next->prev=item; else if(other->parent) other->parent->last=item; else lastitem=item;
-  item->parent=other->parent;
-  item->first=NULL;
-  item->last=NULL;
-  item->x=0;
-  item->y=0;
+  // Can't move in front of itself
+  if(item!=other){
 
-  // Notify item has been inserted
-  if(notify && target){target->handle(this,FXSEL(SEL_INSERTED,message),(void*)item);}
-
-  // Redo layout
-  recalc();
-  return item;
-  }
-
-
-// Link item after other
-FXFoldingItem* FXFoldingList::addItemAfter(FXFoldingItem* other,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr,FXbool notify){
-  return addItemAfter(other,createItem(text,oi,ci,ptr),notify);
-  }
-
-
-// Link item before other
-FXFoldingItem* FXFoldingList::addItemBefore(FXFoldingItem* other,FXFoldingItem* item,FXbool notify){
-
-  // Must have items
-  if(!item || !other){ fxerror("%s::addItemBefore: NULL argument.\n",getClassName()); }
-
-  // Add item to list
-  item->next=other;
-  item->prev=other->prev;
-  other->prev=item;
-  if(item->prev) item->prev->next=item; else if(other->parent) other->parent->first=item; else firstitem=item;
-  item->parent=other->parent;
-  item->first=NULL;
-  item->last=NULL;
-  item->x=0;
-  item->y=0;
-
-  // Notify item has been inserted
-  if(notify && target){target->handle(this,FXSEL(SEL_INSERTED,message),(void*)item);}
-
-  // Redo layout
-  recalc();
-  return item;
-  }
-
-
-// Link item before other
-FXFoldingItem* FXFoldingList::addItemBefore(FXFoldingItem* other,const FXString& text,FXIcon* oi,FXIcon* ci,void* ptr,FXbool notify){
-  return addItemBefore(other,createItem(text,oi,ci,ptr),notify);
-  }
-
-
-// Reparent item under a new parent
-void FXFoldingList::reparentItem(FXFoldingItem* item,FXFoldingItem* p){
-  if(!item){ fxerror("%s::reparentItem: NULL argument.\n",getClassName()); }
-  if(item->parent!=p){
+    // Unlink from current spot
     if(item->prev) item->prev->next=item->next; else if(item->parent) item->parent->first=item->next; else firstitem=item->next;
     if(item->next) item->next->prev=item->prev; else if(item->parent) item->parent->last=item->prev; else lastitem=item->prev;
-    if(p){
-      item->prev=p->last;
-      item->next=NULL;
-      if(item->prev) item->prev->next=item; else p->first=item;
-      p->last=item;
+
+    // Hang item into the list
+    if(father){
+      if(other){
+        item->next=other;
+        item->prev=other->prev;
+        other->prev=item;
+        }
+      else{
+        item->next=NULL;
+        item->prev=father->last;
+        father->last=item;
+        }
+      if(item->prev) item->prev->next=item; else father->first=item;
       }
     else{
-      item->prev=lastitem;
-      item->next=NULL;
+      if(other){
+        item->next=other;
+        item->prev=other->prev;
+        other->prev=item;
+        }
+      else{
+        item->next=NULL;
+        item->prev=lastitem;
+        lastitem=item;
+        }
       if(item->prev) item->prev->next=item; else firstitem=item;
-      lastitem=item;
       }
-    item->parent=p;
-    recalc();
-    }
-  }
 
-
-// Move olditem before newitem
-FXFoldingItem* FXFoldingList::moveItemBefore(FXFoldingItem* other,FXFoldingItem* item){
-
-  // Did it change?
-  if(item!=other){
-
-    // Must be in range
-    if(!other || !item){ fxerror("%s::moveItemBefore: NULL argument.\n",getClassName()); }
-
-    // Unlink from old spot
-    if(item->prev) item->prev->next=item->next; else if(item->parent) item->parent->first=item->next; else firstitem=item->next;
-    if(item->next) item->next->prev=item->prev; else if(item->parent) item->parent->last=item->prev; else lastitem=item->prev;
-
-    // Same parent as newitem
-    item->parent=other->parent;
-
-    // Link in front of new item
-    item->next=other;
-    item->prev=other->prev;
-    if(item->prev) item->prev->next=item; else if(item->parent) item->parent->first=item; else firstitem=item;
-    item->next->prev=item;
+    // Fill in the rest
+    item->parent=father;
 
     // Redo layout
     recalc();
@@ -2330,39 +2363,81 @@ FXFoldingItem* FXFoldingList::moveItemBefore(FXFoldingItem* other,FXFoldingItem*
   }
 
 
-// Move olditem after newitem
-FXFoldingItem* FXFoldingList::moveItemAfter(FXFoldingItem* other,FXFoldingItem* item){
+// Extract node from list
+FXFoldingItem* FXFoldingList::extractItem(FXFoldingItem* item,FXbool notify){
+  register FXFoldingItem *olditem=currentitem;
+  register FXFoldingItem *result=item;
+  register FXFoldingItem *prv;
+  register FXFoldingItem *nxt;
+  register FXFoldingItem *par;
+  if(item){
 
-  // Did it change?
-  if(item!=other){
+    // Remember hookups
+    nxt=result->next;
+    prv=result->prev;
+    par=result->parent;
 
-    // Must be in range
-    if(!other || !item){ fxerror("%s::moveItemAfter: NULL argument.\n",getClassName()); }
+    // Unlink item from tree
+    if(prv) prv->next=nxt; else if(par) par->first=nxt; else firstitem=nxt;
+    if(nxt) nxt->prev=prv; else if(par) par->last=prv; else lastitem=prv;
 
-    // Unlink from old spot
-    if(item->prev) item->prev->next=item->next; else if(item->parent) item->parent->first=item->next; else firstitem=item->next;
-    if(item->next) item->next->prev=item->prev; else if(item->parent) item->parent->last=item->prev; else lastitem=item->prev;
+    // Is now unhooked
+    result->parent=NULL;
+    result->next=NULL;
+    result->prev=NULL;
 
-    // Same parent as newitem
-    item->parent=other->parent;
+    // Successor value
+    if(prv) par=prv;
+    if(nxt) par=nxt;
 
-    // Link in front of new item
-    item->prev=other;
-    item->next=other->next;
-    if(item->next) item->next->prev=item; else if(item->parent) item->parent->last=item; else lastitem=item;
-    item->prev->next=item;
+    // Visit all children
+    while(item){
+
+       // Adjust pointers
+      if(anchoritem==item) anchoritem=par;
+      if(currentitem==item) currentitem=par;
+      if(extentitem==item) extentitem=par;
+      if(viewableitem==item) viewableitem=par;
+
+      // Next item
+      if(item->first){
+        item=item->first;
+        continue;
+        }
+      while(!item->next && item->parent){
+        item=item->parent;
+        }
+      item=item->next;
+      }
+
+    // Current item has changed
+    if(olditem!=currentitem){
+      if(notify && target){target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)currentitem);}
+      }
+
+    // Extracted current item
+    if(currentitem && currentitem!=olditem){
+      if(hasFocus()){
+        currentitem->setFocus(TRUE);
+        }
+      if((options&SELECT_MASK)==FOLDINGLIST_BROWSESELECT && currentitem->isEnabled()){
+        selectItem(currentitem,notify);
+        }
+      }
 
     // Redo layout
     recalc();
     }
-  return item;
+  return result;
   }
 
 
 // Remove all siblings from [fm,to]
 void FXFoldingList::removeItems(FXFoldingItem* fm,FXFoldingItem* to,FXbool notify){
   register FXFoldingItem *olditem=currentitem;
-  register FXFoldingItem *prv,*nxt,*par;
+  register FXFoldingItem *prv;
+  register FXFoldingItem *nxt;
+  register FXFoldingItem *par;
   if(fm && to){
     if(fm->parent!=to->parent){ fxerror("%s::removeItems: arguments have different parent.\n",getClassName()); }
 
@@ -2375,7 +2450,7 @@ void FXFoldingList::removeItems(FXFoldingItem* fm,FXFoldingItem* to,FXbool notif
       do{
 
         // Notify item will be deleted
-        if(notify && target){target->handle(this,FXSEL(SEL_DELETED,message),(void*)to);}
+        if(notify && target){target->tryHandle(this,FXSEL(SEL_DELETED,message),(void*)to);}
 
         // Remember hookups
         nxt=to->next;
@@ -2386,6 +2461,7 @@ void FXFoldingList::removeItems(FXFoldingItem* fm,FXFoldingItem* to,FXbool notif
         if(anchoritem==to){ anchoritem=par; if(prv) anchoritem=prv; if(nxt) anchoritem=nxt; }
         if(extentitem==to){ extentitem=par; if(prv) extentitem=prv; if(nxt) extentitem=nxt; }
         if(currentitem==to){ currentitem=par; if(prv) currentitem=prv; if(nxt) currentitem=nxt; }
+        if(viewableitem==to){ viewableitem=par; if(prv) viewableitem=prv; if(nxt) viewableitem=nxt; }
 
         // Remove item from list
         if(prv) prv->next=nxt; else if(par) par->first=nxt; else firstitem=nxt;
@@ -2404,7 +2480,7 @@ void FXFoldingList::removeItems(FXFoldingItem* fm,FXFoldingItem* to,FXbool notif
 
     // Current item has changed
 x:  if(olditem!=currentitem){
-      if(notify && target){target->handle(this,FXSEL(SEL_CHANGED,message),(void*)currentitem);}
+      if(notify && target){target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)currentitem);}
       }
 
     // Deleted current item
@@ -2439,41 +2515,72 @@ typedef FXint (*FXCompareFunc)(const FXString&,const FXString &,FXint);
 
 
 // Get item by name
-FXFoldingItem* FXFoldingList::findItem(const FXString& text,FXFoldingItem* start,FXuint flags) const {
+FXFoldingItem* FXFoldingList::findItem(const FXString& text,FXFoldingItem* start,FXuint flgs) const {
   register FXCompareFunc comparefunc;
-  register FXFoldingItem *item,*s,*f,*l;
+  register FXFoldingItem *item;
   register FXint len;
   if(firstitem){
-    comparefunc=(flags&SEARCH_IGNORECASE) ? (FXCompareFunc)comparecase : (FXCompareFunc)compare;
-    len=(flags&SEARCH_PREFIX)?text.length():2147483647;
-    if(!(flags&SEARCH_BACKWARD)){
-      s=f=firstitem;
-      if(start){s=start;if(s->parent){f=s->parent->first;}}
-      item=s;
-      while(item){
-        if((*comparefunc)(item->label,text,len)==0) return item;
-        item=item->next;
+    comparefunc=(flgs&SEARCH_IGNORECASE) ? (FXCompareFunc)comparecase : (FXCompareFunc)compare;
+    len=(flgs&SEARCH_PREFIX)?text.length():2147483647;
+    if(flgs&SEARCH_BACKWARD){
+      item=start;
+      while(item!=NULL){
+        if((*comparefunc)(item->getText(),text,len)==0) return item;
+        item=item->getAbove();
         }
-      if(!(flags&SEARCH_WRAP)) return NULL;
-      item=f;
-      while(item && item!=s){
-        if((*comparefunc)(item->label,text,len)==0) return item;
-        item=item->next;
+      if(start && !(flgs&SEARCH_WRAP)) return NULL;
+      for(item=lastitem; item->getLast(); item=item->getLast());
+      while(item!=start){
+        if((*comparefunc)(item->getText(),text,len)==0) return item;
+        item=item->getAbove();
         }
       }
     else{
-      s=l=lastitem;
-      if(start){s=start;if(s->parent){l=s->parent->last;}}
-      item=s;
-      while(item){
-        if((*comparefunc)(item->label,text,len)==0) return item;
-        item=item->prev;
+      item=start;
+      while(item!=NULL){
+        if((*comparefunc)(item->getText(),text,len)==0) return item;
+        item=item->getBelow();
         }
-      if(!(flags&SEARCH_WRAP)) return NULL;
-      item=l;
-      while(item && item!=s){
-        if((*comparefunc)(item->label,text,len)==0) return item;
-        item=item->prev;
+      if(start && !(flgs&SEARCH_WRAP)) return NULL;
+      item=firstitem;
+      while(item!=start){
+        if((*comparefunc)(item->getText(),text,len)==0) return item;
+        item=item->getBelow();
+        }
+      }
+    }
+  return NULL;
+  }
+
+
+// Get item by data
+FXFoldingItem* FXFoldingList::findItemByData(const void *ptr,FXFoldingItem* start,FXuint flgs) const {
+  register FXFoldingItem *item;
+  if(firstitem){
+    if(flgs&SEARCH_BACKWARD){
+      item=start;
+      while(item!=NULL){
+        if(item->getData()==ptr) return item;
+        item=item->getAbove();
+        }
+      if(start && !(flgs&SEARCH_WRAP)) return NULL;
+      for(item=lastitem; item->getLast(); item=item->getLast());
+      while(item!=start){
+        if(item->getData()==ptr) return item;
+        item=item->getAbove();
+        }
+      }
+    else{
+      item=start;
+      while(item!=NULL){
+        if(item->getData()==ptr) return item;
+        item=item->getBelow();
+        }
+      if(start && !(flgs&SEARCH_WRAP)) return NULL;
+      item=firstitem;
+      while(item!=start){
+        if(item->getData()==ptr) return item;
+        item=item->getBelow();
         }
       }
     }

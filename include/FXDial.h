@@ -3,7 +3,7 @@
 *                              D i a l   W i d g e t                            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXDial.h,v 1.27 2004/02/08 17:17:33 fox Exp $                            *
+* $Id: FXDial.h,v 1.35 2006/01/22 17:58:00 fox Exp $                            *
 ********************************************************************************/
 #ifndef FXDIAL_H
 #define FXDIAL_H
@@ -42,29 +42,31 @@ enum {
 
 
 /**
-* The dial widget is a valuator widget which is able to provide a cyclic
-* value range, or a simple linear value range.  Optionally, the zero point
-* may be displayed by means of a colored notch.
+* The Dial widget is a valuator widget which is able to provide a cyclic
+* value range when the DIAL_CYCLIC is passed, or a simple linear value range.
 * While being turned, the dial sends a SEL_CHANGED message to its target;
 * at the end of the interaction, a SEL_COMMAND message is sent.
-* The message data represents the current value, of type FXint.
+* The message data represents the current value, of type FXint.  The options
+* DIAL_VERTICAL and DIAL_HORIZONTAL control the orientation of the dial.
+* An optional notch can be used to indicate the zero-position of
+* the dial; display of the notch is controlled by the DIAL_HAS_NOTCH option.
 */
 class FXAPI FXDial : public FXFrame {
   FXDECLARE(FXDial)
 protected:
-  FXint         range[2];                         // Reported data range
-  FXColor       notchColor;                       // Main notch color
-  FXint         notchangle;                       // Angle of main notch
-  FXint         notchspacing;                     // Angle between notches
-  FXint         notchoffset;                      // Notch offset
-  FXint         dragpoint;                        // Place where clicked
-  FXint         dragpos;                          // Value where clicked
-  FXint         incr;                             // Rate of change/revolution
-  FXint         pos;                              // Reported data position
-  FXString      help;                             // Help string
-  FXString      tip;                              // Tip string
+  FXint         range[2];       // Reported data range
+  FXColor       notchColor;     // Main notch color
+  FXint         notchangle;     // Angle of main notch
+  FXint         notchspacing;   // Angle between notches
+  FXint         notchoffset;    // Notch offset
+  FXint         dragpoint;      // Place where clicked
+  FXint         dragpos;        // Value where clicked
+  FXint         incr;           // Rate of change/revolution
+  FXint         pos;            // Reported data position
+  FXString      help;           // Help string
+  FXString      tip;            // Tip string
 protected:
-  FXDial(){}
+  FXDial();
 private:
   FXDial(const FXDial&);
   FXDial &operator=(const FXDial&);
@@ -74,6 +76,8 @@ public:
   long onMouseWheel(FXObject*,FXSelector,void*);
   long onLeftBtnPress(FXObject*,FXSelector,void* );
   long onLeftBtnRelease(FXObject*,FXSelector,void*);
+  long onKeyPress(FXObject*,FXSelector,void*);
+  long onKeyRelease(FXObject*,FXSelector,void*);
   long onUngrabbed(FXObject*,FXSelector,void*);
   long onCmdSetValue(FXObject*,FXSelector,void*);
   long onCmdSetIntValue(FXObject*,FXSelector,void*);
@@ -101,14 +105,17 @@ public:
   /// Return default height
   virtual FXint getDefaultHeight();
 
+  /// Returns true because a dial can receive focus
+  virtual bool canFocus() const;
+
   /// Set the dial value
-  void setValue(FXint value);
+  void setValue(FXint value,FXbool notify=FALSE);
 
   /// Return the dial value
   FXint getValue() const { return pos; }
 
   /// Change the dial's range
-  void setRange(FXint lo,FXint hi);
+  void setRange(FXint lo,FXint hi,FXbool notify=FALSE);
 
   /// Obtain the current range of the dial
   void getRange(FXint& lo,FXint& hi) const { lo=range[0]; hi=range[1]; }
@@ -116,7 +123,9 @@ public:
   /**
   * Set the revolution increment, which is the amount of change
   * in the position for revolution of the dial; the dial may go
-  * through multiple revolutions to go through its whole range
+  * through multiple revolutions to go through its whole range;
+  * by default it takes one 360 degree turn of the dial to go
+  * from the lower to the upper range.
   */
   void setRevolutionIncrement(FXint i);
 
@@ -159,13 +168,13 @@ public:
   void setHelpText(const FXString& text);
 
   /// Get the current help text
-  FXString getHelpText() const { return help; }
+  const FXString& getHelpText() const { return help; }
 
   /// Set the tip text to be displayed in the tooltip
   void setTipText(const FXString& text);
 
   /// Get the current tooltip text value
-  FXString getTipText() const { return tip; }
+  const FXString& getTipText() const { return tip; }
 
   /// Save to stream
   virtual void save(FXStream& store) const;

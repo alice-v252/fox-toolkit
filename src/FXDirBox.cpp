@@ -3,7 +3,7 @@
 *                     D i r e c t o r y   B o x   O b j e c t                   *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,23 +19,28 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXDirBox.cpp,v 1.46 2004/02/08 17:29:06 fox Exp $                        *
+* $Id: FXDirBox.cpp,v 1.65 2006/01/22 17:58:22 fox Exp $                        *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "fxascii.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
 #include "FXRectangle.h"
+#include "FXPath.h"
+#include "FXStat.h"
 #include "FXFile.h"
+#include "FXDir.h"
 #include "FXSettings.h"
 #include "FXRegistry.h"
 #include "FXAccelTable.h"
 #include "FXObjectList.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXImage.h"
 #include "FXIcon.h"
@@ -67,6 +72,8 @@
     the lowest directory.
   - Share icons with other widgets; upgrade icons to some nicer ones.
   - Should some of these icons move to FXFileDict?
+  - Need to support ":" directory list separator so we can path not just
+    a single path but a list of paths.
 */
 
 using namespace FX;
@@ -78,11 +85,11 @@ namespace FX {
 
 // Map
 FXDEFMAP(FXDirBox) FXDirBoxMap[]={
-  FXMAPFUNC(SEL_CHANGED,0,FXDirBox::onChanged),
-  FXMAPFUNC(SEL_COMMAND,0,FXDirBox::onCommand),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_SETVALUE,FXDirBox::onCmdSetValue),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_SETSTRINGVALUE,FXDirBox::onCmdSetStringValue),
-  FXMAPFUNC(SEL_COMMAND,FXWindow::ID_GETSTRINGVALUE,FXDirBox::onCmdGetStringValue),
+  FXMAPFUNC(SEL_CHANGED,FXDirBox::ID_TREE,FXDirBox::onTreeChanged),
+  FXMAPFUNC(SEL_CLICKED,FXDirBox::ID_TREE,FXDirBox::onTreeClicked),
+  FXMAPFUNC(SEL_COMMAND,FXDirBox::ID_SETVALUE,FXDirBox::onCmdSetValue),
+  FXMAPFUNC(SEL_COMMAND,FXDirBox::ID_SETSTRINGVALUE,FXDirBox::onCmdSetStringValue),
+  FXMAPFUNC(SEL_COMMAND,FXDirBox::ID_GETSTRINGVALUE,FXDirBox::onCmdGetStringValue),
   };
 
 
@@ -211,7 +218,7 @@ FXTreeItem* FXDirBox::getPathnameItem(const FXString& path){
     if(id()) icon->create();
 
     // Add root
-    item=addItemFirst(NULL,"/",icon,icon);
+    item=appendItem(NULL,"/",icon,icon);
 
     // Add the rest
     while(end<path.length()){
@@ -230,7 +237,7 @@ FXTreeItem* FXDirBox::getPathnameItem(const FXString& path){
         }
 
       // Add next item under last
-      item=addItemLast(item,path.mid(beg,end-beg),icon,icon);
+      item=appendItem(item,path.mid(beg,end-beg),icon,icon);
 
       // Create item
       if(id()) icon->create();
@@ -255,6 +262,11 @@ FXTreeItem* FXDirBox::getPathnameItem(const FXString& path){
   register FXint beg=0;
   register FXint end=0;
   FXchar drivename[10];
+//  FXchar volumename[256];
+//  FXchar filesystem[100];
+//  FXchar fullname[266];
+//  DWORD  MaximumComponentLength;
+//  DWORD  FileSystemFlags;
   FXuint drivemask;
 
   // Remove old items first
@@ -265,7 +277,7 @@ FXTreeItem* FXDirBox::getPathnameItem(const FXString& path){
     end++;
     if(ISPATHSEP(path[1])) end++;
     }
-  else if(isalpha((FXuchar)path[0]) && path[1]==':'){
+  else if(Ascii::isLetter(path[0]) && path[1]==':'){
     end+=2;
     if(ISPATHSEP(path[2])) end++;
     }
@@ -284,8 +296,18 @@ FXTreeItem* FXDirBox::getPathnameItem(const FXString& path){
     for(drivename[0]='A'; drivename[0]<='Z'; drivename[0]++){
       if(drivemask&1){
 
+        // Find volume label; unfortunately, we can't use this
+        // name as-is since when we're retrieving the item name
+        // we're expecting a legal drive letter sans volume label
+// 		if('B'<drivename[0] && GetVolumeInformationA(drivename,volumename,sizeof(volumename),NULL,&MaximumComponentLength,&FileSystemFlags,filesystem,sizeof(filesystem))!=0){
+//          sprintf(fullname,"%s (%s)",volumename,drivename);
+//          }
+//        else{
+//          sprintf(fullname,"Drive (%s)",drivename);
+//          }
+
         // Default icon based on hardware type
-        switch(GetDriveType(drivename)){
+        switch(GetDriveTypeA(drivename)){
           case DRIVE_REMOVABLE: icon=(drivename[0]<='B') ? floppyicon : zipdiskicon; break;
           case DRIVE_FIXED: icon=harddiskicon; break;
           case DRIVE_REMOTE: icon=netdriveicon; break;
@@ -306,7 +328,7 @@ FXTreeItem* FXDirBox::getPathnameItem(const FXString& path){
         if(id()) icon->create();
 
         // Add another root item
-        it=addItemLast(NULL,drivename,icon,icon);
+        it=appendItem(NULL,drivename,icon,icon);
 
         // Rest of path under this root
         if(comparecase(path,drivename,end)==0) item=it;
@@ -327,7 +349,7 @@ FXTreeItem* FXDirBox::getPathnameItem(const FXString& path){
     if(id()) icon->create();
 
     // Add netword neighborhood item
-    it=addItemLast(NULL,"\\\\",icon,icon);
+    it=appendItem(NULL,"\\\\",icon,icon);
 
     // Rest of path under this root maybe
     if(comparecase(path,"\\\\",end)==0) item=it;
@@ -355,7 +377,7 @@ FXTreeItem* FXDirBox::getPathnameItem(const FXString& path){
         if(id()) icon->create();
 
         // Add next item under last
-        item=addItemLast(item,path.mid(beg,end-beg),icon,icon);
+        item=appendItem(item,path.mid(beg,end-beg),icon,icon);
 
         // Skip over path separator
         if(end<path.length() && ISPATHSEP(path[end])) end++;
@@ -370,26 +392,32 @@ FXTreeItem* FXDirBox::getPathnameItem(const FXString& path){
 
 #endif
 
-// Changed current item in tree; pass path to current item
-long FXDirBox::onChanged(FXObject*,FXSelector,void* ptr){
+
+// Forward clicked message from list to target
+long FXDirBox::onTreeClicked(FXObject*,FXSelector,void* ptr){
   FXString string=getItemPathname((FXTreeItem*)ptr);
-  if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)string.text());
+  button->handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);    // Unpost the list
+  if(ptr){
+    field->setText(tree->getItemText((FXTreeItem*)ptr));
+    field->setIcon(tree->getItemClosedIcon((FXTreeItem*)ptr));
+    removeItem(((FXTreeItem*)ptr)->getFirst());
+    if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)string.text());
+    }
   return 1;
   }
 
 
-// Switch current item
-long FXDirBox::onCommand(FXObject*,FXSelector,void* ptr){
+// Forward changed message from list to target
+long FXDirBox::onTreeChanged(FXObject*,FXSelector,void* ptr){
   FXString string=getItemPathname((FXTreeItem*)ptr);
-  removeItem(((FXTreeItem*)ptr)->getFirst());
-  if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)string.text());
+  if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)string.text());
   return 1;
   }
 
 
 // Set directory
 void FXDirBox::setDirectory(const FXString& pathname){
-  setCurrentItem(getPathnameItem(FXFile::absolute(pathname)));
+  setCurrentItem(getPathnameItem(FXPath::absolute(pathname)));
   }
 
 

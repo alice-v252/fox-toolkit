@@ -3,7 +3,7 @@
 *                        P o s t S c r i p t   O u t p u t                      *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2003,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 2003,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,12 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: fxpsio.cpp,v 1.5 2004/04/08 16:24:48 fox Exp $                           *
+* $Id: fxpsio.cpp,v 1.11 2006/01/22 17:58:54 fox Exp $                          *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
 #include "FXStream.h"
 
 
@@ -42,7 +43,7 @@ using namespace FX;
 namespace FX {
 
 
-extern FXAPI FXbool fxsavePS(FXStream& store,const FXColor *data,FXint width,FXint height,FXint paperw=612,FXint paperh=792,FXint margin=35,FXbool color=TRUE);
+extern FXAPI bool fxsavePS(FXStream& store,const FXColor *data,FXint width,FXint height,FXint paperw=612,FXint paperh=792,FXint margin=35,bool color=true);
 
 
 // Spit output to stream
@@ -50,7 +51,7 @@ static void output(FXStream& store,const char* fmt,...){
   FXchar buffer[1024]; FXint len;
   va_list args;
   va_start(args,fmt);
-#if __GLIBC__>=2 || defined(WIN32)
+#if defined(WIN32) || defined(HAVE_VSNPRINTF)
   len=vsnprintf(buffer,sizeof(buffer),fmt,args);
 #else
   len=vsprintf(buffer,fmt,args);
@@ -61,12 +62,12 @@ static void output(FXStream& store,const char* fmt,...){
 
 
 // Save image to PostScript file
-FXbool fxsavePS(FXStream& store,const FXColor* data,FXint width,FXint height,FXint paperw,FXint paperh,FXint margin,FXbool color){
+bool fxsavePS(FXStream& store,const FXColor* data,FXint width,FXint height,FXint paperw,FXint paperh,FXint margin,bool color){
   register FXint bx,by,bxx,byy,x,y;
   register FXuchar *p;
 
   // Must make sense
-  if(!data || width<=0 || height<=0 || paperh<=0 || paperw<=0 || margin<=0) return FALSE;
+  if(!data || width<=0 || height<=0 || paperh<=0 || paperw<=0 || margin<=0) return false;
 
   // Figure out scale; maximize for the paper size
   bxx=paperw-margin*2;
@@ -165,7 +166,7 @@ FXbool fxsavePS(FXStream& store,const FXColor* data,FXint width,FXint height,FXi
   output(store,"end\n");
   output(store,"origstate restore\n");
   output(store,"%%%%Trailer\n");
-  return TRUE;
+  return true;
   }
 
 }

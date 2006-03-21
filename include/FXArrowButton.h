@@ -3,7 +3,7 @@
 *                     A r r o w   B u t t o n   W i d g e t                     *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXArrowButton.h,v 1.35 2004/02/08 17:17:33 fox Exp $                     *
+* $Id: FXArrowButton.h,v 1.39 2006/01/22 17:57:58 fox Exp $                     *
 ********************************************************************************/
 #ifndef FXARROWBUTTON_H
 #define FXARROWBUTTON_H
@@ -113,7 +113,7 @@ public:
   virtual void disable();
 
   /// Returns true because a button can receive focus
-  virtual FXbool canFocus() const;
+  virtual bool canFocus() const;
 
   /// Set the button state (where TRUE means the button is down)
   void setState(FXbool s);
@@ -125,13 +125,13 @@ public:
   void setHelpText(const FXString& text){ help=text; }
 
   /// Get status line help text for this arrow button
-  FXString getHelpText() const { return help; }
+  const FXString& getHelpText() const { return help; }
 
   /// Set tool tip message for this arrow button
   void setTipText(const FXString& text){ tip=text; }
 
   /// Get tool tip message for this arrow button
-  FXString getTipText() const { return tip; }
+  const FXString& getTipText() const { return tip; }
 
   /// Set the arrow style flags
   void setArrowStyle(FXuint style);

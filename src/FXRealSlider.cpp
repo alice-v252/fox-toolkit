@@ -3,7 +3,7 @@
 *                       R e a l S l i d e r   W i d g e t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,18 +19,20 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXRealSlider.cpp,v 1.6 2004/03/25 23:11:04 fox Exp $                     *
+* $Id: FXRealSlider.cpp,v 1.20 2006/01/22 17:58:38 fox Exp $                    *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
 #include "FXRectangle.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXDCWindow.h"
 #include "FXRealSlider.h"
@@ -73,9 +75,11 @@ FXDEFMAP(FXRealSlider) FXRealSliderMap[]={
   FXMAPFUNC(SEL_LEFTBUTTONRELEASE,0,FXRealSlider::onLeftBtnRelease),
   FXMAPFUNC(SEL_MIDDLEBUTTONPRESS,0,FXRealSlider::onMiddleBtnPress),
   FXMAPFUNC(SEL_MIDDLEBUTTONRELEASE,0,FXRealSlider::onMiddleBtnRelease),
+  FXMAPFUNC(SEL_KEYPRESS,0,FXRealSlider::onKeyPress),
+  FXMAPFUNC(SEL_KEYRELEASE,0,FXRealSlider::onKeyRelease),
   FXMAPFUNC(SEL_UNGRABBED,0,FXRealSlider::onUngrabbed),
-  FXMAPFUNC(SEL_UPDATE,FXRealSlider::ID_QUERY_TIP,FXRealSlider::onQueryTip),
-  FXMAPFUNC(SEL_UPDATE,FXRealSlider::ID_QUERY_HELP,FXRealSlider::onQueryHelp),
+  FXMAPFUNC(SEL_QUERY_TIP,0,FXRealSlider::onQueryTip),
+  FXMAPFUNC(SEL_QUERY_HELP,0,FXRealSlider::onQueryHelp),
   FXMAPFUNC(SEL_TIMEOUT,FXRealSlider::ID_AUTOSLIDE,FXRealSlider::onAutoSlide),
   FXMAPFUNC(SEL_COMMAND,FXRealSlider::ID_SETVALUE,FXRealSlider::onCmdSetValue),
   FXMAPFUNC(SEL_COMMAND,FXRealSlider::ID_SETINTVALUE,FXRealSlider::onCmdSetIntValue),
@@ -179,6 +183,10 @@ FXint FXRealSlider::getDefaultHeight(){
   }
 
 
+// Returns true because a slider can receive focus
+bool FXRealSlider::canFocus() const { return true; }
+
+
 // Layout changed; even though the position is still
 // the same, the head may have to be moved.
 void FXRealSlider::layout(){
@@ -215,20 +223,22 @@ long FXRealSlider::onCmdGetTip(FXObject*,FXSelector,void* ptr){
   }
 
 
-// We were asked about status text
-long FXRealSlider::onQueryHelp(FXObject* sender,FXSelector,void*){
-  if(!help.empty() && (flags&FLAG_HELP)){
-    sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),&help);
+// We were asked about tip text
+long FXRealSlider::onQueryTip(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXWindow::onQueryTip(sender,sel,ptr)) return 1;
+  if((flags&FLAG_TIP) && !tip.empty()){
+    sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&tip);
     return 1;
     }
   return 0;
   }
 
 
-// We were asked about tip text
-long FXRealSlider::onQueryTip(FXObject* sender,FXSelector,void*){
-  if(!tip.empty() && (flags&FLAG_TIP)){
-    sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),&tip);
+// We were asked about status text
+long FXRealSlider::onQueryHelp(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXWindow::onQueryHelp(sender,sel,ptr)) return 1;
+  if((flags&FLAG_HELP) && !help.empty()){
+    sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&help);
     return 1;
     }
   return 0;
@@ -305,10 +315,12 @@ long FXRealSlider::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
   register FXEvent *event=(FXEvent*)ptr;
   register FXdouble p=pos;
   flags&=~FLAG_TIP;
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   if(isEnabled()){
     grab();
     getApp()->removeTimeout(this,ID_AUTOSLIDE);
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
+    flags&=~FLAG_UPDATE;
     if(options&REALSLIDER_VERTICAL){
       if(event->win_y<headpos){
         getApp()->addTimeout(this,ID_AUTOSLIDE,getApp()->getScrollDelay(),(void*)(FXival)1);
@@ -341,10 +353,9 @@ long FXRealSlider::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
     if(p>range[1]) p=range[1];
     if(p!=pos){
       setValue(p);
-      if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)&pos);
       flags|=FLAG_CHANGED;
+      if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)&pos);
       }
-    flags&=~FLAG_UPDATE;
     return 1;
     }
   return 0;
@@ -361,9 +372,9 @@ long FXRealSlider::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
     flags&=~FLAG_PRESSED;
     flags&=~FLAG_CHANGED;
     flags|=FLAG_UPDATE;
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
     if(flgs&FLAG_CHANGED){
-      if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
       }
     return 1;
     }
@@ -416,8 +427,8 @@ long FXRealSlider::onMotion(FXObject*,FXSelector,void* ptr){
     if(p>range[1]) p=range[1];
     if(pos!=p){
       pos=p;
-      if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)&pos);
       flags|=FLAG_CHANGED;
+      if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)&pos);
       }
     return 1;
     }
@@ -431,14 +442,17 @@ long FXRealSlider::onMiddleBtnPress(FXObject*,FXSelector,void* ptr){
   register FXint xx,yy,ww,hh,lo,hi,h,travel;
   register FXdouble p;
   flags&=~FLAG_TIP;
+  handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   if(isEnabled()){
     grab();
-    if(target && target->handle(this,FXSEL(SEL_MIDDLEBUTTONPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_MIDDLEBUTTONPRESS,message),ptr)) return 1;
     dragpoint=headsize/2;
     yy=border+padtop+2;
     xx=border+padleft+2;
     hh=height-(border<<1)-padtop-padbottom-4;
     ww=width-(border<<1)-padleft-padright-4;
+    flags&=~FLAG_UPDATE;
+    flags|=FLAG_PRESSED;
     if(options&REALSLIDER_VERTICAL){
       h=event->win_y-dragpoint;
       travel=hh-headsize;
@@ -473,11 +487,9 @@ long FXRealSlider::onMiddleBtnPress(FXObject*,FXSelector,void* ptr){
     if(p>range[1]) p=range[1];
     if(p!=pos){
       pos=p;
-      if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)&pos);
       flags|=FLAG_CHANGED;
+      if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)&pos);
       }
-    flags|=FLAG_PRESSED;
-    flags&=~FLAG_UPDATE;
     return 1;
     }
   return 0;
@@ -494,9 +506,9 @@ long FXRealSlider::onMiddleBtnRelease(FXObject*,FXSelector,void* ptr){
     flags&=~FLAG_CHANGED;
     flags|=FLAG_UPDATE;
     setValue(pos);                         // Hop to exact position
-    if(target && target->handle(this,FXSEL(SEL_MIDDLEBUTTONRELEASE,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_MIDDLEBUTTONRELEASE,message),ptr)) return 1;
     if(flgs&FLAG_CHANGED){
-      if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
       }
     return 1;
     }
@@ -512,10 +524,74 @@ long FXRealSlider::onMouseWheel(FXObject*,FXSelector,void* ptr){
   if(p>range[1]) p=range[1];
   if(pos!=p){
     setValue(p);
-    if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)&pos);
-    if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
+    if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
     }
   return 1;
+  }
+
+
+// Keyboard press
+long FXRealSlider::onKeyPress(FXObject*,FXSelector,void* ptr){
+  FXEvent* event=(FXEvent*)ptr;
+  if(isEnabled()){
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
+    switch(event->code){
+      case KEY_Left:
+      case KEY_KP_Left:
+        if(!(options&REALSLIDER_VERTICAL)) goto dec;
+        break;
+      case KEY_Right:
+      case KEY_KP_Right:
+        if(!(options&REALSLIDER_VERTICAL)) goto inc;
+        break;
+      case KEY_Up:
+      case KEY_KP_Up:
+        if(options&REALSLIDER_VERTICAL) goto inc;
+        break;
+      case KEY_Down:
+      case KEY_KP_Down:
+        if(options&REALSLIDER_VERTICAL) goto dec;
+        break;
+      case KEY_plus:
+      case KEY_KP_Add:
+inc:    setValue(pos+incr);
+        return 1;
+      case KEY_minus:
+      case KEY_KP_Subtract:
+dec:    setValue(pos-incr);
+        return 1;
+      }
+    }
+  return 0;
+  }
+
+
+// Keyboard release
+long FXRealSlider::onKeyRelease(FXObject*,FXSelector,void* ptr){
+  FXEvent* event=(FXEvent*)ptr;
+  if(isEnabled()){
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
+    switch(event->code){
+      case KEY_Left:
+      case KEY_KP_Left:
+      case KEY_Right:
+      case KEY_KP_Right:
+        if(!(options&REALSLIDER_VERTICAL)) return 1;
+        break;
+      case KEY_Up:
+      case KEY_KP_Up:
+      case KEY_Down:
+      case KEY_KP_Down:
+        if(options&REALSLIDER_VERTICAL) return 1;
+        break;
+      case KEY_plus:
+      case KEY_KP_Add:
+      case KEY_KP_Subtract:
+      case KEY_minus:
+        return 1;
+      }
+    }
+  return 0;
   }
 
 
@@ -545,8 +621,8 @@ long FXRealSlider::onAutoSlide(FXObject*,FXSelector,void* ptr){
     }
   if(p!=pos){
     setValue(p);
-    if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)&pos);
     flags|=FLAG_CHANGED;
+    if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)&pos);
     return 1;
     }
   return 0;
@@ -776,12 +852,12 @@ long FXRealSlider::onPaint(FXObject*,FXSelector,void* ptr){
 // Set slider range; this also revalidates the position,
 // and possibly moves the head [even if the position was still OK,
 // the head might still have to be moved to the exact position].
-void FXRealSlider::setRange(FXdouble lo,FXdouble hi){
+void FXRealSlider::setRange(FXdouble lo,FXdouble hi,FXbool notify){
   if(lo>hi){ fxerror("%s::setRange: trying to set negative range.\n",getClassName()); }
   if(range[0]!=lo || range[1]!=hi){
     range[0]=lo;
     range[1]=hi;
-    setValue(pos);
+    setValue(pos,notify);
     }
   }
 
@@ -791,7 +867,7 @@ void FXRealSlider::setRange(FXdouble lo,FXdouble hi){
 // head positions may represent the same position!
 // Also, the minimal amount is repainted, as one sometimes as very
 // large/wide sliders.
-void FXRealSlider::setValue(FXdouble p){
+void FXRealSlider::setValue(FXdouble p,FXbool notify){
   register FXdouble interval=range[1]-range[0];
   register FXint travel,lo,hi,h;
   if(p<range[0]) p=range[0];
@@ -816,7 +892,10 @@ void FXRealSlider::setValue(FXdouble p){
       update(lo-1,border,hi+headsize+2-lo,height-(border<<1));
       }
     }
-  pos=p;
+  if(pos!=p){
+    pos=p;
+    if(notify && target){target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);}
+    }
   }
 
 

@@ -3,7 +3,7 @@
 *                       T e x t   S e a r c h   D i a l o g                     *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2000,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 2000,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXSearchDialog.cpp,v 1.26 2004/02/08 17:29:07 fox Exp $                  *
+* $Id: FXSearchDialog.cpp,v 1.33 2006/01/22 17:58:41 fox Exp $                  *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -31,7 +33,6 @@
 #include "FXRectangle.h"
 #include "FXRegistry.h"
 #include "FXAccelTable.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXFont.h"
 #include "FXFrame.h"
@@ -67,7 +68,7 @@ FXIMPLEMENT(FXSearchDialog,FXReplaceDialog,NULL,0)
 // File Open Dialog
 FXSearchDialog::FXSearchDialog(FXWindow* owner,const FXString& caption,FXIcon* ic,FXuint opts,FXint x,FXint y,FXint w,FXint h):
   FXReplaceDialog(owner,caption,ic,opts,x,y,w,h){
-  accept->setText("&Search");
+  accept->setText(tr("&Search"));
   every->hide();
   replacelabel->hide();
   replacebox->hide();

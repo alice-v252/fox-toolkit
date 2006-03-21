@@ -3,7 +3,7 @@
 *                         M e n u   B a r   W i d g e t                         *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMenuBar.cpp,v 1.19 2004/02/08 17:29:06 fox Exp $                       *
+* $Id: FXMenuBar.cpp,v 1.26 2006/01/22 17:58:35 fox Exp $                       *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -31,7 +33,6 @@
 #include "FXRectangle.h"
 #include "FXRegistry.h"
 #include "FXAccelTable.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXButton.h"
 #include "FXMenuBar.h"
@@ -162,14 +163,14 @@ long FXMenuBar::onLeave(FXObject* sender,FXSelector sel,void* ptr){
 
 // We're considered inside the menu bar when either
 // in the bar or in any active menus
-FXbool FXMenuBar::contains(FXint parentx,FXint parenty) const {
+bool FXMenuBar::contains(FXint parentx,FXint parenty) const {
   FXint x,y;
-  if(FXComposite::contains(parentx,parenty)) return 1;
+  if(FXComposite::contains(parentx,parenty)) return true;
   if(getFocus()){
     getParent()->translateCoordinatesTo(x,y,this,parentx,parenty);
-    if(getFocus()->contains(x,y)) return 1;
+    if(getFocus()->contains(x,y)) return true;
     }
-  return 0;
+  return false;
   }
 
 

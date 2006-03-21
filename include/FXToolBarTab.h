@@ -3,7 +3,7 @@
 *                       T o o l   B a r   T a b   W i d g e t                   *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXToolBarTab.h,v 1.5 2004/02/08 17:17:34 fox Exp $                       *
+* $Id: FXToolBarTab.h,v 1.11 2006/01/22 17:58:11 fox Exp $                      *
 ********************************************************************************/
 #ifndef FXTOOLBARTAB_H
 #define FXTOOLBARTAB_H
@@ -48,9 +48,10 @@ enum {
 class FXAPI FXToolBarTab : public FXFrame {
   FXDECLARE(FXToolBarTab)
 protected:
-  FXColor activeColor;                    // Color when active
-  FXbool  collapsed;                      // Is collapsed flat
-  FXbool  down;                           // Button down
+  FXColor  activeColor; // Color when active
+  FXString tip;         // Tooltip
+  FXbool   collapsed;   // Is collapsed flat
+  FXbool   down;        // Button down
 protected:
   FXToolBarTab();
   void drawUpArrow(FXDCWindow& dc);
@@ -76,6 +77,9 @@ public:
   long onUpdCollapse(FXObject*,FXSelector,void*);
   long onCmdUncollapse(FXObject*,FXSelector,void*);
   long onUpdUncollapse(FXObject*,FXSelector,void*);
+  long onCmdSetTip(FXObject*,FXSelector,void*);
+  long onCmdGetTip(FXObject*,FXSelector,void*);
+  long onQueryTip(FXObject*,FXSelector,void*);
 public:
   enum {
     ID_COLLAPSE=FXFrame::ID_LAST,
@@ -88,7 +92,7 @@ public:
   FXToolBarTab(FXComposite* p,FXObject* tgt=NULL,FXSelector sel=0,FXuint opts=FRAME_RAISED,FXint x=0,FXint y=0,FXint w=0,FXint h=0);
 
   /// Toolbar tab can receive focus
-  virtual FXbool canFocus() const;
+  virtual bool canFocus() const;
 
   /// Return default width
   virtual FXint getDefaultWidth();
@@ -103,7 +107,7 @@ public:
   virtual void disable();
 
   /// Collapse or uncollapse the toolbar
-  void collapse(FXbool c=TRUE);
+  void collapse(FXbool fold,FXbool notify=FALSE);
 
   /// Return true if the toolbar is collapsed
   FXbool isCollapsed() const { return collapsed; }
@@ -119,6 +123,12 @@ public:
 
   /// Set the active color
   void setActiveColor(FXColor clr);
+
+  /// Set the tool tip message for the toolbar tab
+  void setTipText(const FXString& text){ tip=text; }
+
+  /// Get the tool tip message for the toolbar tab
+  const FXString& getTipText() const { return tip; }
 
   /// Save to a stream
   virtual void save(FXStream& store) const;

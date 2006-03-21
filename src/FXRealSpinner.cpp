@@ -3,7 +3,7 @@
 *             R e a l - V a l u e d   S p i n n e r  W i d g e t                *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2003,2004 by Bill Baxter.   All Rights Reserved.                *
+* Copyright (C) 2003,2006 by Bill Baxter.   All Rights Reserved.                *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXRealSpinner.cpp,v 1.20 2004/02/19 15:37:45 fox Exp $                   *
+* $Id: FXRealSpinner.cpp,v 1.38 2006/02/14 03:32:42 fox Exp $                   *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -32,7 +34,6 @@
 #include "FXRectangle.h"
 #include "FXRegistry.h"
 #include "FXAccelTable.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXLabel.h"
 #include "FXTextField.h"
@@ -47,8 +48,6 @@
     with the dial was impossible.
   - Wheel mouse offers incrementation/decrementation in nice
     multiples of increment, makes it very quick to get a value.
-  - Needed rather complicated mechanism so as to ensure a "wheely"
-    up and down gets you back to EXACTLY the same number!
 */
 
 #define BUTTONWIDTH 14
@@ -67,7 +66,6 @@ FXDEFMAP(FXRealSpinner) FXRealSpinnerMap[]={
   FXMAPFUNC(SEL_KEYPRESS,0,FXRealSpinner::onKeyPress),
   FXMAPFUNC(SEL_KEYRELEASE,0,FXRealSpinner::onKeyRelease),
   FXMAPFUNC(SEL_FOCUS_SELF,0,FXRealSpinner::onFocusSelf),
-  FXMAPFUNC(SEL_UPDATE,FXRealSpinner::ID_ENTRY,FXRealSpinner::onUpdEntry),
   FXMAPFUNC(SEL_COMMAND,FXRealSpinner::ID_ENTRY,FXRealSpinner::onCmdEntry),
   FXMAPFUNC(SEL_CHANGED,FXRealSpinner::ID_ENTRY,FXRealSpinner::onChgEntry),
   FXMAPFUNC(SEL_MOUSEWHEEL,FXRealSpinner::ID_ENTRY,FXRealSpinner::onWheelEntry),
@@ -93,23 +91,22 @@ FXIMPLEMENT(FXRealSpinner,FXPacker,FXRealSpinnerMap,ARRAYNUMBER(FXRealSpinnerMap
 
 // Construct spinner out of two buttons and a text field
 FXRealSpinner::FXRealSpinner(){
-  flags=(flags|FLAG_ENABLED|FLAG_SHOWN)&~FLAG_UPDATE;
+  flags|=FLAG_ENABLED;
   textField=(FXTextField*)-1L;
   upButton=(FXArrowButton*)-1L;
   downButton=(FXArrowButton*)-1L;
   range[0]=-DBL_MAX;
   range[1]= DBL_MAX;
-  base=0.0;
   incr=1.0;
+  gran=0.0;
   pos=0.0;
-  ticks=0;
   }
 
 
 // Construct spinner out of dial and a text field
 FXRealSpinner::FXRealSpinner(FXComposite *p,FXint cols,FXObject *tgt,FXSelector sel,FXuint opts,FXint x,FXint y,FXint w,FXint h,FXint pl,FXint pr,FXint pt,FXint pb):
   FXPacker(p,opts,x,y,w,h,0,0,0,0,0,0){
-  flags=(flags|FLAG_ENABLED|FLAG_SHOWN)&~FLAG_UPDATE;
+  flags|=FLAG_ENABLED;
   target=tgt;
   message=sel;
   textField=new FXTextField(this,cols,this,ID_ENTRY,TEXTFIELD_REAL|JUSTIFY_RIGHT,0,0,0,0,pl,pr,pt,pb);
@@ -118,10 +115,9 @@ FXRealSpinner::FXRealSpinner(FXComposite *p,FXint cols,FXObject *tgt,FXSelector 
   range[0]=(options&REALSPIN_NOMIN) ? -DBL_MAX : 0.0;
   range[1]=(options&REALSPIN_NOMAX) ?  DBL_MAX : 100.0;
   textField->setText("0");
-  base=0.0;
   incr=1.0;
+  gran=0.0;
   pos=0.0;
-  ticks=0;
   }
 
 
@@ -200,8 +196,7 @@ long FXRealSpinner::onUpdIncrement(FXObject* sender,FXSelector,void*){
 // Respond to increment message
 long FXRealSpinner::onCmdIncrement(FXObject*,FXSelector,void*){
   if(isEnabled() && isEditable()){
-    increment();
-    if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
+    increment(TRUE);
     return 1;
     }
   return 0;
@@ -221,8 +216,7 @@ long FXRealSpinner::onUpdDecrement(FXObject* sender,FXSelector,void*){
 // Respond to decrement message
 long FXRealSpinner::onCmdDecrement(FXObject*,FXSelector,void*){
   if(isEnabled() && isEditable()){
-    decrement();
-    if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
+    decrement(TRUE);
     return 1;
     }
   return 0;
@@ -231,21 +225,19 @@ long FXRealSpinner::onCmdDecrement(FXObject*,FXSelector,void*){
 
 // Rolling mouse wheel in text field behaves as if inside dial
 long FXRealSpinner::onWheelEntry(FXObject*,FXSelector,void* ptr){
+  FXEvent* event=(FXEvent*)ptr;
   if(isEnabled() && isEditable()){
-    if(((FXEvent*)ptr)->code>0) 
-      increment(); 
-    else 
-      decrement();
-    if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
+    if(((FXEvent*)ptr)->code>0){
+      if(event->state&CONTROLMASK) incrementByAmount(incr*10.0,TRUE);
+      else increment(TRUE);
+      }
+    else{
+      if(event->state&CONTROLMASK) decrementByAmount(incr*10.0,TRUE);
+      else decrement(TRUE);
+      }
     return 1;
     }
   return 0;
-  }
-
-
-// Update from text field
-long FXRealSpinner::onUpdEntry(FXObject*,FXSelector,void*){
-  return target && target->handle(this,FXSEL(SEL_UPDATE,message),NULL);
   }
 
 
@@ -255,8 +247,8 @@ long FXRealSpinner::onChgEntry(FXObject*,FXSelector,void*){
   if(value<range[0]) value=range[0];
   if(value>range[1]) value=range[1];
   if(value!=pos){
-    pos=base=value; ticks=0;
-    if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)&pos);
+    pos=value;
+    if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)&pos);
     }
   return 1;
   }
@@ -265,7 +257,7 @@ long FXRealSpinner::onChgEntry(FXObject*,FXSelector,void*){
 // Text field command
 long FXRealSpinner::onCmdEntry(FXObject*,FXSelector,void*){
   textField->setText(FXStringVal(pos));       // Put back adjusted value
-  if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
+  if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
   return 1;
   }
 
@@ -274,13 +266,12 @@ long FXRealSpinner::onCmdEntry(FXObject*,FXSelector,void*){
 long FXRealSpinner::onKeyPress(FXObject* sender,FXSelector sel,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(isEnabled()){
-    if(target && target->handle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
     switch(event->code){
       case KEY_Up:
       case KEY_KP_Up:
         if(isEditable()){
-          increment();
-          if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
+          increment(TRUE);
           }
         else{
           getApp()->beep();
@@ -289,8 +280,7 @@ long FXRealSpinner::onKeyPress(FXObject* sender,FXSelector sel,void* ptr){
       case KEY_Down:
       case KEY_KP_Down:
         if(isEditable()){
-          decrement();
-          if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);
+          decrement(TRUE);
           }
         else{
           getApp()->beep();
@@ -308,7 +298,7 @@ long FXRealSpinner::onKeyPress(FXObject* sender,FXSelector sel,void* ptr){
 long FXRealSpinner::onKeyRelease(FXObject* sender,FXSelector sel,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(isEnabled()){
-    if(target && target->handle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
     switch(event->code){
       case KEY_Up:
       case KEY_KP_Up:
@@ -325,7 +315,7 @@ long FXRealSpinner::onKeyRelease(FXObject* sender,FXSelector sel,void* ptr){
 
 // Force focus on the text field
 long FXRealSpinner::onFocusSelf(FXObject* sender,FXSelector,void* ptr){
-  return textField->handle(sender,FXSEL(SEL_FOCUS_SELF,0),ptr);
+  return textField->tryHandle(sender,FXSEL(SEL_FOCUS_SELF,0),ptr);
   }
 
 
@@ -395,41 +385,58 @@ long FXRealSpinner::onCmdGetRealRange(FXObject*,FXSelector,void* ptr){
 
 
 // Increment spinner
-void FXRealSpinner::increment(){
-  if(range[0]<range[1]){
-    if(options&REALSPIN_CYCLIC){
-      FXdouble value=++ticks*incr+base;
-      pos=value-floor((value-range[0])/(range[1]-range[0]))*(range[1]-range[0]);
-      }
-    else if(options&REALSPIN_LOG){
-      pos=base*pow(10.0,++ticks*incr);
-      if(pos>range[1]){pos=base=range[1];ticks=0;}
+void FXRealSpinner::increment(FXbool notify){
+  incrementByAmount(incr,notify);
+  }
+
+
+#ifdef WIN32
+double round(double x){
+  return (x >= 0) ? floor(x+0.5) : ceil(x-0.5);
+  } 
+#endif
+
+
+// Increment spinner by certain amount
+void FXRealSpinner::incrementByAmount(FXdouble amount,FXbool notify){
+  if(range[0]<range[1] && 0.0<amount){
+    FXdouble value;
+    if(options&REALSPIN_LOG){
+      value=pos*amount;
       }
     else{
-      pos=++ticks*incr+base;
-      if(pos>range[1]){pos=base=range[1];ticks=0;}
+      value=pos+amount;
+      if(0<gran) value=gran*round(value/gran);
+      if(options&REALSPIN_CYCLIC){
+        value=value-floor((value-range[0])/(range[1]-range[0]))*(range[1]-range[0]);
+        }
       }
-    textField->setText(FXStringVal(pos));
+    setValue(value,notify);
     }
   }
 
 
 // Decrement spinner
-void FXRealSpinner::decrement(){
-  if(range[0]<range[1]){
-    if(options&REALSPIN_CYCLIC){
-      FXdouble value=--ticks*incr+base;
-      pos=value-floor((value-range[0])/(range[1]-range[0]))*(range[1]-range[0]);
-      }
-    else if(options&REALSPIN_LOG){
-      pos=base*pow(10.0,--ticks*incr);
-      if(pos<range[0]){pos=base=range[0];ticks=0;}
+void FXRealSpinner::decrement(FXbool notify){
+  decrementByAmount(incr,notify);
+  }
+
+
+// Decrement spinner by certain amount
+void FXRealSpinner::decrementByAmount(FXdouble amount,FXbool notify){
+  if(range[0]<range[1] && 0.0<amount){
+    FXdouble value;
+    if(options&REALSPIN_LOG){
+      value=pos/amount;
       }
     else{
-      pos=--ticks*incr+base;
-      if(pos<range[0]){pos=base=range[0];ticks=0;}
+      value=pos-amount;
+      if(0<gran) value=gran*round(value/gran);
+      if(options&REALSPIN_CYCLIC){
+        value=value-floor((value-range[0])/(range[1]-range[0]))*(range[1]-range[0]);
+        }
       }
-    textField->setText(FXStringVal(pos));
+    setValue(value,notify);
     }
   }
 
@@ -447,23 +454,24 @@ void FXRealSpinner::setCyclic(FXbool cyclic){
 
 
 // Set spinner range; this also revalidates the position,
-void FXRealSpinner::setRange(FXdouble lo,FXdouble hi){
+void FXRealSpinner::setRange(FXdouble lo,FXdouble hi,FXbool notify){
   if(lo>hi){ fxerror("%s::setRange: trying to set negative range.\n",getClassName()); }
   if(range[0]!=lo || range[1]!=hi){
     range[0]=lo;
     range[1]=hi;
-    setValue(pos);
+    setValue(pos,notify);
     }
   }
 
 
 // Set new value
-void FXRealSpinner::setValue(FXdouble value){
+void FXRealSpinner::setValue(FXdouble value,FXbool notify){
   if(value<range[0]) value=range[0];
   if(value>range[1]) value=range[1];
   if(pos!=value){
     textField->setText(FXStringVal(value));
-    pos=base=value; ticks=0;
+    pos=value;
+    if(notify && target){target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)&pos);}
     }
   }
 
@@ -471,7 +479,15 @@ void FXRealSpinner::setValue(FXdouble value){
 // Change value increment
 void FXRealSpinner::setIncrement(FXdouble inc){
   if(inc<=0.0){ fxerror("%s::setIncrement: negative or zero increment specified.\n",getClassName()); }
-  incr=inc; base=pos; ticks=0;
+  incr=inc;
+  }
+
+
+
+// Change spinner granularity
+void FXRealSpinner::setGranularity(FXdouble gr){
+  if(gr<0.0){ fxerror("%s::setGranularity: negative granularity specified.\n",getClassName()); }
+  gran=gr;
   }
 
 
@@ -492,7 +508,7 @@ void FXRealSpinner::setTextVisible(FXbool shown){
 
 
 // Set the font used in the text field|
-void FXRealSpinner::setFont(FXFont *fnt) {
+void FXRealSpinner::setFont(FXFont *fnt){
   textField->setFont(fnt);
   }
 
@@ -512,7 +528,7 @@ void FXRealSpinner::setHelpText(const FXString&  text){
 
 
 // Get help text
-FXString FXRealSpinner::getHelpText() const {
+const FXString& FXRealSpinner::getHelpText() const {
   return textField->getHelpText();
   }
 
@@ -527,7 +543,7 @@ void FXRealSpinner::setTipText(const FXString&  text){
 
 
 // Get tip text
-FXString FXRealSpinner::getTipText() const {
+const FXString& FXRealSpinner::getTipText() const {
   return textField->getTipText();
   }
 
@@ -642,6 +658,7 @@ void FXRealSpinner::save(FXStream& store) const {
   store << downButton;
   store << range[0] << range[1];
   store << incr;
+  store << gran;
   store << pos;
   }
 
@@ -654,6 +671,7 @@ void FXRealSpinner::load(FXStream& store){
   store >> downButton;
   store >> range[0] >> range[1];
   store >> incr;
+  store >> gran;
   store >> pos;
   }
 

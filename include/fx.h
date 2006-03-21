@@ -3,7 +3,7 @@
 *                   M a i n   F O X   I n c l u d e   F i l e                   *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: fx.h,v 1.75 2004/03/25 02:42:25 fox Exp $                                *
+* $Id: fx.h,v 1.104 2006/01/22 17:58:13 fox Exp $                               *
 ********************************************************************************/
 #ifndef FX_H
 #define FX_H
@@ -34,10 +34,18 @@
 // FOX defines
 #include "fxver.h"
 #include "fxdefs.h"
+#include "fxascii.h"
+#include "fxunicode.h"
 
 // FOX classes
+#include "FXHash.h"
 #include "FXException.h"
+#include "FXThread.h"
 #include "FXStream.h"
+#include "FXIO.h"
+#include "FXFile.h"
+#include "FXPipe.h"
+#include "FXSocket.h"
 #include "FXFileStream.h"
 #include "FXMemoryStream.h"
 #include "FXString.h"
@@ -47,7 +55,11 @@
 #include "FXObject.h"
 #include "FXDelegator.h"
 #include "FXDict.h"
-#include "FXFile.h"
+#include "FXPath.h"
+#include "FXSystem.h"
+#include "FXStat.h"
+#include "FXDir.h"
+#include "FXDate.h"
 #include "FXURL.h"
 #include "FXStringDict.h"
 #include "FXSettings.h"
@@ -55,12 +67,12 @@
 #include "FXObjectList.h"
 #include "FXAccelTable.h"
 #include "FXRecentFiles.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXId.h"
 #include "FXVisual.h"
 #include "FXFont.h"
 #include "FXCursor.h"
+#include "FXGUISignal.h"
 #include "FXCURCursor.h"
 #include "FXGIFCursor.h"
 #include "FXDrawable.h"
@@ -68,6 +80,7 @@
 #include "FXImage.h"
 #include "FXIcon.h"
 #include "FXGIFImage.h"
+#include "FXIFFImage.h"
 #include "FXBMPImage.h"
 #include "FXICOImage.h"
 #include "FXXBMImage.h"
@@ -76,7 +89,9 @@
 #include "FXTGAImage.h"
 #include "FXRGBImage.h"
 #include "FXPPMImage.h"
+#include "FXRASImage.h"
 #include "FXGIFIcon.h"
+#include "FXIFFIcon.h"
 #include "FXBMPIcon.h"
 #include "FXICOIcon.h"
 #include "FXXBMIcon.h"
@@ -85,17 +100,23 @@
 #include "FXTGAIcon.h"
 #include "FXRGBIcon.h"
 #include "FXPPMIcon.h"
+#include "FXRASIcon.h"
 #include "FXRegion.h"
 #include "FXDC.h"
 #include "FXDCWindow.h"
 #include "FXDCPrint.h"
+#include "FXIconSource.h"
+#include "FXIconDict.h"
 #include "FXFileDict.h"
 #include "FXWindow.h"
 #include "FXFrame.h"
 #include "FXSeparator.h"
 #include "FXLabel.h"
+#include "FX7Segment.h"
 #include "FXDial.h"
+#include "FXKnob.h"
 #include "FXColorBar.h"
+#include "FXColorRing.h"
 #include "FXColorWell.h"
 #include "FXColorWheel.h"
 #include "FXTextField.h"
@@ -133,7 +154,6 @@
 #include "FXMenuCommand.h"
 #include "FXMenuCheck.h"
 #include "FXMenuRadio.h"
-#include "FXToolBar.h"
 #include "FXMenuBar.h"
 #include "FXOptionMenu.h"
 #include "FXSwitcher.h"
@@ -157,6 +177,7 @@
 #include "FXDragCorner.h"
 #include "FXStatusBar.h"
 #include "FXStatusLine.h"
+#include "FXChoiceBox.h"
 #include "FXMessageBox.h"
 #include "FXDirList.h"
 #include "FXSlider.h"
@@ -178,11 +199,13 @@
 #include "FXFontSelector.h"
 #include "FXFontDialog.h"
 #include "FXUndoList.h"
+#include "FXRex.h"
 #include "FXText.h"
 #include "FXDataTarget.h"
 #include "FXProgressBar.h"
 #include "FXReplaceDialog.h"
 #include "FXRuler.h"
+#include "FXRulerView.h"
 #include "FXSearchDialog.h"
 #include "FXInputDialog.h"
 #include "FXProgressDialog.h"
@@ -191,11 +214,17 @@
 #include "FXMDIClient.h"
 #include "FXMDIChild.h"
 #include "FXDocument.h"
+#include "FXDockSite.h"
+#include "FXDockBar.h"
+#include "FXToolBar.h"
+#include "FXDockHandler.h"
+#include "FXDockTitle.h"
 #include "FXToolBarGrip.h"
 #include "FXToolBarShell.h"
 #include "FXToolBarTab.h"
 #include "FXPrintDialog.h"
 #include "FXDebugTarget.h"
+#include "FXSplashWindow.h"
 
 
 #ifndef FX_NO_GLOBAL_NAMESPACE

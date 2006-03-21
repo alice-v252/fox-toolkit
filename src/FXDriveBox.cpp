@@ -3,7 +3,7 @@
 *                         D r i v e   B o x   O b j e c t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXDriveBox.cpp,v 1.23 2004/02/08 17:29:06 fox Exp $                      *
+* $Id: FXDriveBox.cpp,v 1.35 2006/01/22 17:58:25 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -34,10 +36,10 @@
 #include "FXRegistry.h"
 #include "FXAccelTable.h"
 #include "FXObjectList.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXId.h"
-#include "FXFile.h"
+#include "FXPath.h"
+#include "FXSystem.h"
 #include "FXDrawable.h"
 #include "FXImage.h"
 #include "FXIcon.h"
@@ -112,7 +114,7 @@ FXDriveBox::FXDriveBox(FXComposite *p,FXObject* tgt,FXSelector sel,FXuint opts,F
   floppyicon=new FXGIFIcon(getApp(),minifloppy);
   nethoodicon=new FXGIFIcon(getApp(),mininethood);
   zipdiskicon=new FXGIFIcon(getApp(),minizipdrive);
-  setDrive(FXFile::getCurrentDrive());
+  setDrive(FXSystem::getCurrentDrive());
   }
 
 
@@ -222,7 +224,7 @@ void FXDriveBox::listDrives(){
     if(drivemask&1){
 
       // Default icon based on hardware type
-      switch(GetDriveType(drivename)){
+      switch(GetDriveTypeA(drivename)){
         case DRIVE_REMOVABLE: icon=(drivename[0]<='B') ? floppyicon : zipdiskicon; break;
         case DRIVE_FIXED: icon=harddiskicon; break;
         case DRIVE_REMOTE: icon=netdriveicon; break;
@@ -258,7 +260,7 @@ long FXDriveBox::onListClicked(FXObject*,FXSelector,void* ptr){
   if(0<=((FXint)(FXival)ptr)){
     field->setText(getItemText((FXival)ptr));
     field->setIcon(getItemIcon((FXival)ptr));
-    if(target){target->handle(this,FXSEL(SEL_COMMAND,message),(void*)getItemText((FXival)ptr).text());}
+    if(target){target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)getItemText((FXival)ptr).text());}
     }
   return 1;
   }
@@ -266,14 +268,14 @@ long FXDriveBox::onListClicked(FXObject*,FXSelector,void* ptr){
 
 // List has changed
 long FXDriveBox::onListChanged(FXObject*,FXSelector,void* ptr){
-  return target && target->handle(this,FXSEL(SEL_CHANGED,message),(void*)getItemText((FXival)ptr).text());
+  return target && target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)getItemText((FXival)ptr).text());
   }
 
 
 // Set directory
 FXbool FXDriveBox::setDrive(const FXString& drive){
   listDrives();
-  setCurrentItem(findItem(FXFile::drive(FXFile::absolute(drive))));
+  setCurrentItem(findItem(FXPath::drive(FXPath::absolute(drive))));
   return TRUE;
   }
 

@@ -3,7 +3,7 @@
 *                             B i t m a p    O b j e c t                        *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXBitmap.h,v 1.30 2004/03/03 21:34:21 fox Exp $                          *
+* $Id: FXBitmap.h,v 1.37 2006/01/22 17:57:59 fox Exp $                          *
 ********************************************************************************/
 #ifndef FXBITMAP_H
 #define FXBITMAP_H
@@ -46,8 +46,8 @@ class FXDCWindow;
 
 /**
 * A Bitmap is a rectangular array of pixels.  It supports two representations
-* of these pixels: a client-side pixel buffer, and a server-side pixmap which 
-* is stored in an organization directly compatible with the screen, for fast 
+* of these pixels: a client-side pixel buffer, and a server-side pixmap which
+* is stored in an organization directly compatible with the screen, for fast
 * drawing onto the device.
 * The server-side representation is not directly accessible from the current
 * process as it lives in the process of the X Server or GDI.
@@ -85,17 +85,33 @@ public:
   */
   FXBitmap(FXApp* a,const void *pix=NULL,FXuint opts=0,FXint w=1,FXint h=1);
 
-  /// To get to the pixel data
-  FXuchar* getData() const { return data; }
+  /// Change options
+  void setOptions(FXuint opts);
 
   /// To get to the option flags
   FXuint getOptions() const { return options; }
 
-  /// Change options
-  void setOptions(FXuint opts);
+  /**
+  * Populate the bitmap with new pixel data of the same size; it will assume
+  * ownership of the pixel data if image BITMAP_OWNED option is passed.
+  * The server-side representation of the image, if it exists, is not updated.
+  * This can be done by calling render().
+  */
+  virtual void setData(FXuchar *pix,FXuint opts=0);
+
+  /**
+  * Populate the bitmap with new pixel data of a new size; it will assume ownership
+  * of the pixel data if image BITMAP_OWNED option is passed.  The size of the server-
+  * side representation of the image, if it exists, is adjusted but the contents are
+  * not updated yet. This can be done by calling render().
+  */
+  virtual void setData(FXuchar *pix,FXuint opts,FXint w,FXint h);
+
+  /// To get to the pixel data
+  FXuchar* getData() const { return data; }
 
   /// Get pixel at x,y
-  FXbool getPixel(FXint x,FXint y) const { return (data[y*bytewidth+(x>>3)]>>(x&7))&1; }
+  FXbool getPixel(FXint x,FXint y) const { return (FXbool)((data[y*bytewidth+(x>>3)]>>(x&7))&1); }
 
   /// Change pixel at x,y
   void setPixel(FXint x,FXint y,FXbool color){ color ? data[y*bytewidth+(x>>3)]|=(1<<(x&7)) : data[y*bytewidth+(x>>3)]&=~(1<<(x&7)); }
@@ -122,8 +138,13 @@ public:
   virtual void destroy();
 
   /**
+  * Retrieves pixels from the server-side bitmap.
+  */
+  virtual void restore();
+
+  /**
   * Render the server-side representation of the bitmap from client-side
-  * pixels. 
+  * pixels.
   */
   virtual void render();
 
@@ -133,10 +154,17 @@ public:
   */
   virtual void release();
 
-  /// Resize bitmap to the specified width and height; the contents become undefined
+  /**
+  * Resize both client-side and server-side representations (if any) to the
+  * given width and height.  The new representations typically contain garbage
+  * after this operation and need to be re-filled.
+  */
   virtual void resize(FXint w,FXint h);
 
-  /// Rescale pixels to the specified width and height
+  /**
+  * Rescale pixels image to the specified width and height; this calls
+  * resize() to adjust the client and server side representations.
+  */
   virtual void scale(FXint w,FXint h);
 
   /// Mirror bitmap horizontally and/or vertically
@@ -145,8 +173,13 @@ public:
   /// Rotate bitmap by degrees ccw
   virtual void rotate(FXint degrees);
 
-  /// Crop bitmap to given rectangle
-  virtual void crop(FXint x,FXint y,FXint w,FXint h);
+  /**
+  * Crop bitmap to given rectangle; this calls resize() to adjust the client
+  * and server side representations.  The new bitmap may be smaller or larger
+  * than the old one; blank areas are filled with color. There must be at
+  * least one pixel of overlap between the old and the new bitmap.
+  */
+  virtual void crop(FXint x,FXint y,FXint w,FXint h,FXbool color=0);
 
   /// Fill bitmap with uniform value
   virtual void fill(FXbool color);
@@ -158,10 +191,10 @@ public:
   virtual void load(FXStream& store);
 
   /// Save pixel data only
-  virtual FXbool savePixels(FXStream& store) const;
+  virtual bool savePixels(FXStream& store) const;
 
   /// Load pixel data only
-  virtual FXbool loadPixels(FXStream& store);
+  virtual bool loadPixels(FXStream& store);
 
   /// Cleanup
   virtual ~FXBitmap();
@@ -170,3 +203,4 @@ public:
 }
 
 #endif
+

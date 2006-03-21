@@ -3,7 +3,7 @@
 *                          P N G   I m a g e   O b j e c t                      *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXPNGIcon.h,v 1.15 2004/02/08 17:17:34 fox Exp $                         *
+* $Id: FXPNGIcon.h,v 1.22 2006/01/22 17:58:06 fox Exp $                         *
 ********************************************************************************/
 #ifndef FXPNGICON_H
 #define FXPNGICON_H
@@ -40,15 +40,21 @@ private:
   FXPNGIcon(const FXPNGIcon&);
   FXPNGIcon &operator=(const FXPNGIcon&);
 public:
+  static const FXchar fileExt[];
+  static const FXchar mimeType[];
+public:
 
   /// Construct an icon from memory stream formatted in PNG format
   FXPNGIcon(FXApp *a,const void *pix=NULL,FXColor clr=FXRGB(192,192,192),FXuint opts=0,FXint w=1,FXint h=1);
 
+  /// True if format is supported
+  static const bool supported;
+
   /// Save pixels into stream in PNG format
-  virtual FXbool savePixels(FXStream& store) const;
+  virtual bool savePixels(FXStream& store) const;
 
   /// Load pixels from stream in PNG format
-  virtual FXbool loadPixels(FXStream& store);
+  virtual bool loadPixels(FXStream& store);
 
   /// Destroy
   virtual ~FXPNGIcon();
@@ -56,17 +62,23 @@ public:
 
 
 /**
+* Check if stream contains a PNG, return TRUE if so.
+*/
+extern FXAPI bool fxcheckPNG(FXStream& store);
+
+
+/**
 * Load an PNG (Portable Network Graphics) file from a stream.
 * Upon successful return, the pixel array and size are returned.
 * If an error occurred, the pixel array is set to NULL.
 */
-extern FXAPI FXbool fxloadPNG(FXStream& store,FXColor*& data,FXint& width,FXint& height);
+extern FXAPI bool fxloadPNG(FXStream& store,FXColor*& data,FXint& width,FXint& height);
 
 
 /**
 * Save an PNG (Portable Network Graphics) file to a stream.
 */
-extern FXAPI FXbool fxsavePNG(FXStream& store,const FXColor* data,FXint width,FXint height);
+extern FXAPI bool fxsavePNG(FXStream& store,const FXColor* data,FXint width,FXint height);
 
 }
 

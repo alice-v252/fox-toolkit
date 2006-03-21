@@ -3,7 +3,7 @@
 *                S p l i t t e r   W i n d o w   O b j e c t                    *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,18 +19,19 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXSplitter.cpp,v 1.42 2004/04/05 14:49:33 fox Exp $                      *
+* $Id: FXSplitter.cpp,v 1.55 2006/02/20 03:32:13 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
 #include "FXRectangle.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXDCWindow.h"
 #include "FXSplitter.h"
@@ -58,6 +59,9 @@
   - If we're just re-sizing a split, do we need to incur a GUI-Update?
   - Do we need to somehow insure that the sum of the sizes of all
     partitions never exceeds the size of the splitter itself?
+  - Should we drop default parameters on 2nd constructor so as to
+    prevent conflicts on compilers where NULL is defined as 0 instead
+    of __null?
 */
 
 // Splitter styles
@@ -457,7 +461,7 @@ long FXSplitter::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
   FXEvent* ev=(FXEvent*)ptr;
   if(isEnabled()){
     grab();
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
     if(options&SPLITTER_VERTICAL){
       window=findVSplit(ev->win_y);
       if(window){
@@ -502,7 +506,7 @@ long FXSplitter::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
     flags|=FLAG_UPDATE;
     flags&=~FLAG_CHANGED;
     flags&=~FLAG_PRESSED;
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
     if(flgs&FLAG_PRESSED){
       if(!(options&SPLITTER_TRACKING)){
         if(options&SPLITTER_VERTICAL){
@@ -514,11 +518,11 @@ long FXSplitter::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
           adjustHLayout();
           }
         if(flgs&FLAG_CHANGED){
-          if(target) target->handle(this,FXSEL(SEL_CHANGED,message),NULL);
+          if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),window);
           }
         }
       if(flgs&FLAG_CHANGED){
-        if(target) target->handle(this,FXSEL(SEL_COMMAND,message),NULL);
+        if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),window);
         }
       }
     return 1;
@@ -542,7 +546,7 @@ long FXSplitter::onMotion(FXObject*,FXSelector,void* ptr){
           }
         else{
           adjustVLayout();
-          if(target) target->handle(this,FXSEL(SEL_CHANGED,message),NULL);
+          if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),window);
           }
         flags|=FLAG_CHANGED;
         }
@@ -556,7 +560,7 @@ long FXSplitter::onMotion(FXObject*,FXSelector,void* ptr){
           }
         else{
           adjustHLayout();
-          if(target) target->handle(this,FXSEL(SEL_CHANGED,message),NULL);
+          if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),window);
           }
         flags|=FLAG_CHANGED;
         }
@@ -581,19 +585,18 @@ long FXSplitter::onFocusPrev(FXObject* sender,FXSelector sel,void* ptr){
 
 // Focus moved up
 long FXSplitter::onFocusUp(FXObject*,FXSelector,void* ptr){
-  FXWindow *child;
-  if(options&SPLITTER_VERTICAL){
-    if(getFocus())
-      child=getFocus()->getPrev();
-    else
-      child=getLast();
-    while(child){
-      if(child->shown()){
-        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
-        if(child->handle(this,FXSEL(SEL_FOCUS_UP,0),ptr)) return 1;
-        }
-      child=child->getPrev();
+  FXWindow *child=getLast();
+  if(getFocus()){
+    if(getFocus()->handle(this,FXSEL(SEL_FOCUS_UP,0),ptr)) return 1;
+    if(!(options&SPLITTER_VERTICAL)) return 0;
+    child=getFocus()->getPrev();
+    }
+  while(child){
+    if(child->shown()){
+      if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+      if(child->handle(this,FXSEL(SEL_FOCUS_UP,0),ptr)) return 1;
       }
+    child=child->getPrev();
     }
   return 0;
   }
@@ -601,19 +604,18 @@ long FXSplitter::onFocusUp(FXObject*,FXSelector,void* ptr){
 
 // Focus moved down
 long FXSplitter::onFocusDown(FXObject*,FXSelector,void* ptr){
-  FXWindow *child;
-  if(options&SPLITTER_VERTICAL){
-    if(getFocus())
-      child=getFocus()->getNext();
-    else
-      child=getFirst();
-    while(child){
-      if(child->shown()){
-        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
-        if(child->handle(this,FXSEL(SEL_FOCUS_DOWN,0),ptr)) return 1;
-        }
-      child=child->getNext();
+  FXWindow *child=getFirst();
+  if(getFocus()){
+    if(getFocus()->handle(this,FXSEL(SEL_FOCUS_DOWN,0),ptr)) return 1;
+    if(!(options&SPLITTER_VERTICAL)) return 0;
+    child=getFocus()->getNext();
+    }
+  while(child){
+    if(child->shown()){
+      if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+      if(child->handle(this,FXSEL(SEL_FOCUS_DOWN,0),ptr)) return 1;
       }
+    child=child->getNext();
     }
   return 0;
   }
@@ -621,19 +623,18 @@ long FXSplitter::onFocusDown(FXObject*,FXSelector,void* ptr){
 
 // Focus moved to left
 long FXSplitter::onFocusLeft(FXObject*,FXSelector,void* ptr){
-  FXWindow *child;
-  if(!(options&SPLITTER_VERTICAL)){
-    if(getFocus())
-      child=getFocus()->getPrev();
-    else
-      child=getLast();
-    while(child){
-      if(child->shown()){
-        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
-        if(child->handle(this,FXSEL(SEL_FOCUS_LEFT,0),ptr)) return 1;
-        }
-      child=child->getPrev();
+  FXWindow *child=getLast();
+  if(getFocus()){
+    if(getFocus()->handle(this,FXSEL(SEL_FOCUS_LEFT,0),ptr)) return 1;
+    if(options&SPLITTER_VERTICAL) return 0;
+    child=getFocus()->getPrev();
+    }
+  while(child){
+    if(child->shown()){
+      if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+      if(child->handle(this,FXSEL(SEL_FOCUS_LEFT,0),ptr)) return 1;
       }
+    child=child->getPrev();
     }
   return 0;
   }
@@ -641,19 +642,18 @@ long FXSplitter::onFocusLeft(FXObject*,FXSelector,void* ptr){
 
 // Focus moved to right
 long FXSplitter::onFocusRight(FXObject*,FXSelector,void* ptr){
-  FXWindow *child;
-  if(!(options&SPLITTER_VERTICAL)){
-    if(getFocus())
-      child=getFocus()->getNext();
-    else
-      child=getFirst();
-    while(child){
-      if(child->shown()){
-        if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
-        if(child->handle(this,FXSEL(SEL_FOCUS_RIGHT,0),ptr)) return 1;
-        }
-      child=child->getNext();
+  FXWindow *child=getFirst();
+  if(getFocus()){
+    if(getFocus()->handle(this,FXSEL(SEL_FOCUS_RIGHT,0),ptr)) return 1;
+    if(options&SPLITTER_VERTICAL) return 0;
+    child=getFocus()->getNext();
+    }
+  while(child){
+    if(child->shown()){
+      if(child->handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr)) return 1;
+      if(child->handle(this,FXSEL(SEL_FOCUS_RIGHT,0),ptr)) return 1;
       }
+    child=child->getNext();
     }
   return 0;
   }
@@ -663,7 +663,7 @@ long FXSplitter::onFocusRight(FXObject*,FXSelector,void* ptr){
 void FXSplitter::drawHSplit(FXint pos){
   FXDCWindow dc(this);
   dc.clipChildren(FALSE);
-  dc.setFunction(BLT_NOT_DST);     // Does this always show up?
+  dc.setFunction(BLT_NOT_DST);   
   dc.fillRectangle(pos,0,barsize,height);
   }
 
@@ -672,20 +672,20 @@ void FXSplitter::drawHSplit(FXint pos){
 void FXSplitter::drawVSplit(FXint pos){
   FXDCWindow dc(this);
   dc.clipChildren(FALSE);
-  dc.setFunction(BLT_NOT_DST);     // Does this always show up?
+  dc.setFunction(BLT_NOT_DST);  
   dc.fillRectangle(0,pos,width,barsize);
   }
 
 
 // Return size of the panel at index
 FXint FXSplitter::getSplit(FXint index) const {
-  FXWindow *window=childAtIndex(index);
-  if(window){
+  FXWindow *win=childAtIndex(index);
+  if(win){
     if(options&SPLITTER_VERTICAL){
-      return window->getHeight();
+      return win->getHeight();
       }
     else{
-      return window->getWidth();
+      return win->getWidth();
       }
     }
   return 0;
@@ -694,15 +694,15 @@ FXint FXSplitter::getSplit(FXint index) const {
 
 // Change the size of panel at the given index
 void FXSplitter::setSplit(FXint index,FXint size){
-  FXWindow *window=childAtIndex(index);
-  if(window){
+  FXWindow *win=childAtIndex(index);
+  if(win){
     if(options&SPLITTER_VERTICAL){
-      window->setHeight(size);
+      win->setHeight(size);
       }
     else{
-      window->setWidth(size);
+      win->setWidth(size);
       }
-    window->recalc();
+    win->recalc();
     }
   }
 

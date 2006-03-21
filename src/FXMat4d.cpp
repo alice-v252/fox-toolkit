@@ -3,7 +3,7 @@
 *            D o u b l e - P r e c i s i o n   4 x 4   M a t r i x              *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1994,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1994,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,17 +19,19 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMat4d.cpp,v 1.6.2.1 2004/06/24 13:57:24 fox Exp $                          *
+* $Id: FXMat4d.cpp,v 1.17 2006/01/22 17:58:35 fox Exp $                         *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
 #include "FXStream.h"
 #include "FXObject.h"
 #include "FXVec2d.h"
 #include "FXVec3d.h"
 #include "FXVec4d.h"
 #include "FXQuatd.h"
+#include "FXMat3d.h"
 #include "FXMat4d.h"
 
 
@@ -122,6 +124,49 @@ FXMat4d& FXMat4d::operator=(FXdouble w){
   }
 
 
+// Set value from another matrix
+FXMat4d& FXMat4d::set(const FXMat4d& other){
+  m[0]=other[0];
+  m[1]=other[1];
+  m[2]=other[2];
+  m[3]=other[3];
+  return *this;
+  }
+
+
+// Construct from scalar number
+FXMat4d& FXMat4d::set(FXdouble w){
+  m[0][0]=w; m[0][1]=w; m[0][2]=w; m[0][3]=w;
+  m[1][0]=w; m[1][1]=w; m[1][2]=w; m[1][3]=w;
+  m[2][0]=w; m[2][1]=w; m[2][2]=w; m[2][3]=w;
+  m[3][0]=w; m[3][1]=w; m[3][2]=w; m[3][3]=w;
+  return *this;
+  }
+
+
+// Construct from components
+FXMat4d& FXMat4d::set(FXdouble a00,FXdouble a01,FXdouble a02,FXdouble a03,
+                      FXdouble a10,FXdouble a11,FXdouble a12,FXdouble a13,
+                      FXdouble a20,FXdouble a21,FXdouble a22,FXdouble a23,
+                      FXdouble a30,FXdouble a31,FXdouble a32,FXdouble a33){
+  m[0][0]=a00; m[0][1]=a01; m[0][2]=a02; m[0][3]=a03;
+  m[1][0]=a10; m[1][1]=a11; m[1][2]=a12; m[1][3]=a13;
+  m[2][0]=a20; m[2][1]=a21; m[2][2]=a22; m[2][3]=a23;
+  m[3][0]=a30; m[3][1]=a31; m[3][2]=a32; m[3][3]=a33;
+  return *this;
+  }
+
+
+// Construct matrix from three vectors
+FXMat4d& FXMat4d::set(const FXVec4d& a,const FXVec4d& b,const FXVec4d& c,const FXVec4d& d){
+  m[0][0]=a[0]; m[0][1]=a[1]; m[0][2]=a[2]; m[0][3]=a[3];
+  m[1][0]=b[0]; m[1][1]=b[1]; m[1][2]=b[2]; m[1][3]=b[3];
+  m[2][0]=c[0]; m[2][1]=c[1]; m[2][2]=c[2]; m[2][3]=c[3];
+  m[3][0]=d[0]; m[3][1]=d[1]; m[3][2]=d[2]; m[3][3]=d[3];
+  return *this;
+  }
+
+
 // Add matrices
 FXMat4d& FXMat4d::operator+=(const FXMat4d& w){
   m[0][0]+=w[0][0]; m[0][1]+=w[0][1]; m[0][2]+=w[0][2]; m[0][3]+=w[0][3];
@@ -189,58 +234,58 @@ FXMat4d& FXMat4d::operator/=(FXdouble w){
   }
 
 
+// Unary minus
+FXMat4d FXMat4d::operator-() const {
+  return FXMat4d(-m[0][0],-m[0][1],-m[0][2],-m[0][3],
+                 -m[1][0],-m[1][1],-m[1][2],-m[1][3],
+                 -m[2][0],-m[2][1],-m[2][2],-m[2][3],
+                 -m[3][0],-m[3][1],-m[3][2],-m[3][3]);
+  }
+
+
+
 // Add matrices
-FXMat4d operator+(const FXMat4d& a,const FXMat4d& b){
-  return FXMat4d(a[0][0]+b[0][0],a[0][1]+b[0][1],a[0][2]+b[0][2],a[0][3]+b[0][3],
-                 a[1][0]+b[1][0],a[1][1]+b[1][1],a[1][2]+b[1][2],a[1][3]+b[1][3],
-                 a[2][0]+b[2][0],a[2][1]+b[2][1],a[2][2]+b[2][2],a[2][3]+b[2][3],
-                 a[3][0]+b[3][0],a[3][1]+b[3][1],a[3][2]+b[3][2],a[3][3]+b[3][3]);
+FXMat4d FXMat4d::operator+(const FXMat4d& w) const {
+  return FXMat4d(m[0][0]+w[0][0],m[0][1]+w[0][1],m[0][2]+w[0][2],m[0][3]+w[0][3],
+                 m[1][0]+w[1][0],m[1][1]+w[1][1],m[1][2]+w[1][2],m[1][3]+w[1][3],
+                 m[2][0]+w[2][0],m[2][1]+w[2][1],m[2][2]+w[2][2],m[2][3]+w[2][3],
+                 m[3][0]+w[3][0],m[3][1]+w[3][1],m[3][2]+w[3][2],m[3][3]+w[3][3]);
   }
 
 
 // Substract matrices
-FXMat4d operator-(const FXMat4d& a,const FXMat4d& b){
-  return FXMat4d(a[0][0]-b[0][0],a[0][1]-b[0][1],a[0][2]-b[0][2],a[0][3]-b[0][3],
-                 a[1][0]-b[1][0],a[1][1]-b[1][1],a[1][2]-b[1][2],a[1][3]-b[1][3],
-                 a[2][0]-b[2][0],a[2][1]-b[2][1],a[2][2]-b[2][2],a[2][3]-b[2][3],
-                 a[3][0]-b[3][0],a[3][1]-b[3][1],a[3][2]-b[3][2],a[3][3]-b[3][3]);
+FXMat4d FXMat4d::operator-(const FXMat4d& w) const {
+  return FXMat4d(m[0][0]-w[0][0],m[0][1]-w[0][1],m[0][2]-w[0][2],m[0][3]-w[0][3],
+                 m[1][0]-w[1][0],m[1][1]-w[1][1],m[1][2]-w[1][2],m[1][3]-w[1][3],
+                 m[2][0]-w[2][0],m[2][1]-w[2][1],m[2][2]-w[2][2],m[2][3]-w[2][3],
+                 m[3][0]-w[3][0],m[3][1]-w[3][1],m[3][2]-w[3][2],m[3][3]-w[3][3]);
   }
 
 
-// Negate matrix
-FXMat4d operator-(const FXMat4d& a){
-  return FXMat4d(-a[0][0],-a[0][1],-a[0][2],-a[0][3],
-                 -a[1][0],-a[1][1],-a[1][2],-a[1][3],
-                 -a[2][0],-a[2][1],-a[2][2],-a[2][3],
-                 -a[3][0],-a[3][1],-a[3][2],-a[3][3]);
-  }
-
-
-
-// Composite matrices
-FXMat4d operator*(const FXMat4d& a,const FXMat4d& b){
-  FXMat4d r;
+// Multiply matrices
+FXMat4d FXMat4d::operator*(const FXMat4d& w) const {
   register FXdouble x,y,z,h;
-  x=a[0][0]; y=a[0][1]; z=a[0][2]; h=a[0][3];
-  r[0][0]=x*b[0][0]+y*b[1][0]+z*b[2][0]+h*b[3][0];
-  r[0][1]=x*b[0][1]+y*b[1][1]+z*b[2][1]+h*b[3][1];
-  r[0][2]=x*b[0][2]+y*b[1][2]+z*b[2][2]+h*b[3][2];
-  r[0][3]=x*b[0][3]+y*b[1][3]+z*b[2][3]+h*b[3][3];
-  x=a[1][0]; y=a[1][1]; z=a[1][2]; h=a[1][3];
-  r[1][0]=x*b[0][0]+y*b[1][0]+z*b[2][0]+h*b[3][0];
-  r[1][1]=x*b[0][1]+y*b[1][1]+z*b[2][1]+h*b[3][1];
-  r[1][2]=x*b[0][2]+y*b[1][2]+z*b[2][2]+h*b[3][2];
-  r[1][3]=x*b[0][3]+y*b[1][3]+z*b[2][3]+h*b[3][3];
-  x=a[2][0]; y=a[2][1]; z=a[2][2]; h=a[2][3];
-  r[2][0]=x*b[0][0]+y*b[1][0]+z*b[2][0]+h*b[3][0];
-  r[2][1]=x*b[0][1]+y*b[1][1]+z*b[2][1]+h*b[3][1];
-  r[2][2]=x*b[0][2]+y*b[1][2]+z*b[2][2]+h*b[3][2];
-  r[2][3]=x*b[0][3]+y*b[1][3]+z*b[2][3]+h*b[3][3];
-  x=a[3][0]; y=a[3][1]; z=a[3][2]; h=a[3][3];
-  r[3][0]=x*b[0][0]+y*b[1][0]+z*b[2][0]+h*b[3][0];
-  r[3][1]=x*b[0][1]+y*b[1][1]+z*b[2][1]+h*b[3][1];
-  r[3][2]=x*b[0][2]+y*b[1][2]+z*b[2][2]+h*b[3][2];
-  r[3][3]=x*b[0][3]+y*b[1][3]+z*b[2][3]+h*b[3][3];
+  FXMat4d r;
+  x=m[0][0]; y=m[0][1]; z=m[0][2]; h=m[0][3];
+  r[0][0]=x*w[0][0]+y*w[1][0]+z*w[2][0]+h*w[3][0];
+  r[0][1]=x*w[0][1]+y*w[1][1]+z*w[2][1]+h*w[3][1];
+  r[0][2]=x*w[0][2]+y*w[1][2]+z*w[2][2]+h*w[3][2];
+  r[0][3]=x*w[0][3]+y*w[1][3]+z*w[2][3]+h*w[3][3];
+  x=m[1][0]; y=m[1][1]; z=m[1][2]; h=m[1][3];
+  r[1][0]=x*w[0][0]+y*w[1][0]+z*w[2][0]+h*w[3][0];
+  r[1][1]=x*w[0][1]+y*w[1][1]+z*w[2][1]+h*w[3][1];
+  r[1][2]=x*w[0][2]+y*w[1][2]+z*w[2][2]+h*w[3][2];
+  r[1][3]=x*w[0][3]+y*w[1][3]+z*w[2][3]+h*w[3][3];
+  x=m[2][0]; y=m[2][1]; z=m[2][2]; h=m[2][3];
+  r[2][0]=x*w[0][0]+y*w[1][0]+z*w[2][0]+h*w[3][0];
+  r[2][1]=x*w[0][1]+y*w[1][1]+z*w[2][1]+h*w[3][1];
+  r[2][2]=x*w[0][2]+y*w[1][2]+z*w[2][2]+h*w[3][2];
+  r[2][3]=x*w[0][3]+y*w[1][3]+z*w[2][3]+h*w[3][3];
+  x=m[3][0]; y=m[3][1]; z=m[3][2]; h=m[3][3];
+  r[3][0]=x*w[0][0]+y*w[1][0]+z*w[2][0]+h*w[3][0];
+  r[3][1]=x*w[0][1]+y*w[1][1]+z*w[2][1]+h*w[3][1];
+  r[3][2]=x*w[0][2]+y*w[1][2]+z*w[2][2]+h*w[3][2];
+  r[3][3]=x*w[0][3]+y*w[1][3]+z*w[2][3]+h*w[3][3];
   return r;
   }
 
@@ -281,43 +326,18 @@ FXMat4d operator/(const FXMat4d& a,FXdouble x){
   }
 
 
-// Vector times matrix
-FXVec4d operator*(const FXVec4d& v,const FXMat4d& m){
+// Matrix times vector
+FXVec4d FXMat4d::operator*(const FXVec4d& v) const {
   register FXdouble x=v.x,y=v.y,z=v.z,w=v.w;
-  return FXVec4d(x*m[0][0]+y*m[1][0]+z*m[2][0]+w*m[3][0],
-                 x*m[0][1]+y*m[1][1]+z*m[2][1]+w*m[3][1],
-                 x*m[0][2]+y*m[1][2]+z*m[2][2]+w*m[3][2],
-                 x*m[0][3]+y*m[1][3]+z*m[2][3]+w*m[3][3]);
+  return FXVec4d(x*m[0][0]+y*m[0][1]+z*m[0][2]+w*m[0][3], x*m[1][0]+y*m[1][1]+z*m[1][2]+w*m[1][3], x*m[2][0]+y*m[2][1]+z*m[2][2]+w*m[2][3], x*m[3][0]+y*m[3][1]+z*m[3][2]+w*m[3][3]);
   }
 
 
 // Matrix times vector
-FXVec4d operator*(const FXMat4d& m,const FXVec4d& v){
-  register FXdouble x=v.x,y=v.y,z=v.z,w=v.w;
-  return FXVec4d(x*m[0][0]+y*m[0][1]+z*m[0][2]+w*m[0][3],
-                 x*m[1][0]+y*m[1][1]+z*m[1][2]+w*m[1][3],
-                 x*m[2][0]+y*m[2][1]+z*m[2][2]+w*m[2][3],
-                 x*m[3][0]+y*m[3][1]+z*m[3][2]+w*m[3][3]);
-  }
-
-
-// Vector times matrix
-FXVec3d operator*(const FXVec3d& v,const FXMat4d& m){
+FXVec3d FXMat4d::operator*(const FXVec3d& v) const {
   register FXdouble x=v.x,y=v.y,z=v.z;
   FXASSERT(m[0][3]==0.0 && m[1][3]==0.0 && m[2][3]==0.0 && m[3][3]==1.0);
-  return FXVec3d(x*m[0][0]+y*m[1][0]+z*m[2][0]+m[3][0],
-                 x*m[0][1]+y*m[1][1]+z*m[2][1]+m[3][1],
-                 x*m[0][2]+y*m[1][2]+z*m[2][2]+m[3][2]);
-  }
-
-
-// Matrix times vector
-FXVec3d operator*(const FXMat4d& m,const FXVec3d& v){
-  register FXdouble x=v.x,y=v.y,z=v.z;
-  FXASSERT(m[0][3]==0.0 && m[1][3]==0.0 && m[2][3]==0.0 && m[3][3]==1.0);
-  return FXVec3d(x*m[0][0]+y*m[0][1]+z*m[0][2]+m[0][3],
-                 x*m[1][0]+y*m[1][1]+z*m[1][2]+m[1][3],
-                 x*m[2][0]+y*m[2][1]+z*m[2][2]+m[2][3]);
+  return FXVec3d(x*m[0][0]+y*m[0][1]+z*m[0][2]+m[0][3], x*m[1][0]+y*m[1][1]+z*m[1][2]+m[1][3], x*m[2][0]+y*m[2][1]+z*m[2][2]+m[2][3]);
   }
 
 
@@ -443,46 +463,28 @@ FXMat4d& FXMat4d::left(){
 
 // Rotate using quaternion
 FXMat4d& FXMat4d::rot(const FXQuatd& q){
-  register FXdouble r00,r01,r02,r10,r11,r12,r20,r21,r22;
-  register FXdouble x2,y2,z2,xx2,yy2,zz2,xy2,xz2,yz2,wx2,wy2,wz2;
   register FXdouble x,y,z;
 
-  // Pre-calculate some stuff
-  x2  = q.x*2.0;  y2  = q.y*2.0;  z2  = q.z*2.0;
-  xx2 = q.x*x2;   yy2 = q.y*y2;   zz2 = q.z*z2;
-  xy2 = q.x*y2;   xz2 = q.x*z2;   yz2 = q.y*z2;
-  wx2 = q.w*x2;   wy2 = q.w*y2;   wz2 = q.w*z2;
-
-  // Rotation matrix
-  r00 = 1.0-yy2-zz2;  r01 = xy2+wz2;      r02 = xz2-wy2;
-  r10 = xy2-wz2;      r11 = 1.0-xx2-zz2;  r12 = yz2+wx2;
-  r20 = xz2+wy2;      r21 = yz2-wx2;      r22 = 1.0-xx2-yy2;
+  // Get rotation matrix
+  FXMat3d r(q);
 
   // Pre-multiply
-  x=m[0][0];
-  y=m[1][0];
-  z=m[2][0];
-  m[0][0]=x*r00+y*r01+z*r02;
-  m[1][0]=x*r10+y*r11+z*r12;
-  m[2][0]=x*r20+y*r21+z*r22;
-  x=m[0][1];
-  y=m[1][1];
-  z=m[2][1];
-  m[0][1]=x*r00+y*r01+z*r02;
-  m[1][1]=x*r10+y*r11+z*r12;
-  m[2][1]=x*r20+y*r21+z*r22;
-  x=m[0][2];
-  y=m[1][2];
-  z=m[2][2];
-  m[0][2]=x*r00+y*r01+z*r02;
-  m[1][2]=x*r10+y*r11+z*r12;
-  m[2][2]=x*r20+y*r21+z*r22;
-  x=m[0][3];
-  y=m[1][3];
-  z=m[2][3];
-  m[0][3]=x*r00+y*r01+z*r02;
-  m[1][3]=x*r10+y*r11+z*r12;
-  m[2][3]=x*r20+y*r21+z*r22;
+  x=m[0][0]; y=m[1][0]; z=m[2][0];
+  m[0][0]=x*r[0][0]+y*r[0][1]+z*r[0][2];
+  m[1][0]=x*r[1][0]+y*r[1][1]+z*r[1][2];
+  m[2][0]=x*r[2][0]+y*r[2][1]+z*r[2][2];
+  x=m[0][1]; y=m[1][1]; z=m[2][1];
+  m[0][1]=x*r[0][0]+y*r[0][1]+z*r[0][2];
+  m[1][1]=x*r[1][0]+y*r[1][1]+z*r[1][2];
+  m[2][1]=x*r[2][0]+y*r[2][1]+z*r[2][2];
+  x=m[0][2]; y=m[1][2]; z=m[2][2];
+  m[0][2]=x*r[0][0]+y*r[0][1]+z*r[0][2];
+  m[1][2]=x*r[1][0]+y*r[1][1]+z*r[1][2];
+  m[2][2]=x*r[2][0]+y*r[2][1]+z*r[2][2];
+  x=m[0][3]; y=m[1][3]; z=m[2][3];
+  m[0][3]=x*r[0][0]+y*r[0][1]+z*r[0][2];
+  m[1][3]=x*r[1][0]+y*r[1][1]+z*r[1][2];
+  m[2][3]=x*r[2][0]+y*r[2][1]+z*r[2][2];
   return *this;
   }
 
@@ -640,27 +642,27 @@ FXMat4d& FXMat4d::scale(const FXVec3d& v){
 
 
 // Calculate determinant
-FXdouble det(const FXMat4d& a){
-  return DET4(a[0][0],a[0][1],a[0][2],a[0][3],
-              a[1][0],a[1][1],a[1][2],a[1][3],
-              a[2][0],a[2][1],a[2][2],a[2][3],
-              a[3][0],a[3][1],a[3][2],a[3][3]);
+FXdouble FXMat4d::det() const {
+  return DET4(m[0][0],m[0][1],m[0][2],m[0][3],
+              m[1][0],m[1][1],m[1][2],m[1][3],
+              m[2][0],m[2][1],m[2][2],m[2][3],
+              m[3][0],m[3][1],m[3][2],m[3][3]);
   }
 
 
 // Transpose matrix
-FXMat4d transpose(const FXMat4d& a){
-  return FXMat4d(a[0][0],a[1][0],a[2][0],a[3][0],
-                 a[0][1],a[1][1],a[2][1],a[3][1],
-                 a[0][2],a[1][2],a[2][2],a[3][2],
-                 a[0][3],a[1][3],a[2][3],a[3][3]);
+FXMat4d FXMat4d::transpose() const {
+  return FXMat4d(m[0][0],m[1][0],m[2][0],m[3][0],
+                 m[0][1],m[1][1],m[2][1],m[3][1],
+                 m[0][2],m[1][2],m[2][2],m[3][2],
+                 m[0][3],m[1][3],m[2][3],m[3][3]);
   }
 
 
 // Invert matrix
-FXMat4d invert(const FXMat4d& s){
-  FXMat4d m(1.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0);
-  FXMat4d x(s);
+FXMat4d FXMat4d::invert() const {
+  FXMat4d r(1.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0);
+  FXMat4d x(*this);
   register FXdouble pvv,t;
   register int i,j,pvi;
   for(i=0; i<4; i++){
@@ -674,20 +676,20 @@ FXMat4d invert(const FXMat4d& s){
       }
     FXASSERT(pvv != 0.0);  // Should not be singular
     if(pvi!=i){             // Swap rows i and pvi
-      FXSWAP(m[i][0],m[pvi][0],t); FXSWAP(m[i][1],m[pvi][1],t); FXSWAP(m[i][2],m[pvi][2],t); FXSWAP(m[i][3],m[pvi][3],t);
+      FXSWAP(r[i][0],r[pvi][0],t); FXSWAP(r[i][1],r[pvi][1],t); FXSWAP(r[i][2],r[pvi][2],t); FXSWAP(r[i][3],r[pvi][3],t);
       FXSWAP(x[i][0],x[pvi][0],t); FXSWAP(x[i][1],x[pvi][1],t); FXSWAP(x[i][2],x[pvi][2],t); FXSWAP(x[i][3],x[pvi][3],t);
       }
     x[i][0]/=pvv; x[i][1]/=pvv; x[i][2]/=pvv; x[i][3]/=pvv;
-    m[i][0]/=pvv; m[i][1]/=pvv; m[i][2]/=pvv; m[i][3]/=pvv;
+    r[i][0]/=pvv; r[i][1]/=pvv; r[i][2]/=pvv; r[i][3]/=pvv;
     for(j=0; j<4; j++){     // Eliminate column i
       if(j!=i){
         t=x[j][i];
         x[j][0]-=x[i][0]*t; x[j][1]-=x[i][1]*t; x[j][2]-=x[i][2]*t; x[j][3]-=x[i][3]*t;
-        m[j][0]-=m[i][0]*t; m[j][1]-=m[i][1]*t; m[j][2]-=m[i][2]*t; m[j][3]-=m[i][3]*t;
+        r[j][0]-=r[i][0]*t; r[j][1]-=r[i][1]*t; r[j][2]-=r[i][2]*t; r[j][3]-=r[i][3]*t;
         }
       }
     }
-  return m;
+  return r;
   }
 
 
@@ -719,7 +721,6 @@ FXMat4d& FXMat4d::look(const FXVec3d& eye,const FXVec3d& cntr,const FXVec3d& vup
   m[3][2]=rz[0]*x0+rz[1]*x1+rz[2]*x2+tz*m[3][3];
   return *this;
   }
-
 
 
 // Save to archive

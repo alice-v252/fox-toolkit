@@ -3,7 +3,7 @@
 *                         T a b   B o o k   W i d g e t                         *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXTabBook.cpp,v 1.14 2004/02/08 17:29:07 fox Exp $                       *
+* $Id: FXTabBook.cpp,v 1.25 2006/01/22 17:58:45 fox Exp $                       *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -32,7 +34,6 @@
 #include "FXRectangle.h"
 #include "FXRegistry.h"
 #include "FXAccelTable.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXDCWindow.h"
 #include "FXFont.h"
@@ -50,12 +51,13 @@
   - FXTabBook: pane's hints make no sense to observe
   - We hide the panes in FXTabBook.  This way, we don't have to change
     the position of each pane when the FXTabBook itself changes.
-    Only the active pane needs to be moved.
+    Only the active pane needs to be resized, leading to much faster
+    layouts.
   - Fix setCurrent() to be like FXSwitcher.
 */
 
-
 #define TABBOOK_MASK       (TABBOOK_SIDEWAYS|TABBOOK_BOTTOMTABS)
+#define REVEAL_PIXELS      20
 
 using namespace FX;
 
@@ -87,9 +89,9 @@ FXTabBook::FXTabBook(FXComposite* p,FXObject* tgt,FXSelector sel,FXuint opts,FXi
 
 // Get width
 FXint FXTabBook::getDefaultWidth(){
-  register FXint w,wtabs,wmaxtab,wpnls,t,ntabs;
-  register FXuint hints;
+  register FXint w,wtabs,maxtabw,wpnls,t,ntabs;
   register FXWindow *tab,*pane;
+  register FXuint hints;
 
   // Left or right tabs
   if(options&TABBOOK_SIDEWAYS){
@@ -98,7 +100,7 @@ FXint FXTabBook::getDefaultWidth(){
       pane=tab->getNext();
       if(tab->shown()){
         hints=tab->getLayoutHints();
-        if(hints&LAYOUT_FIX_WIDTH) t=tab->getWidth(); else t=tab->getDefaultWidth();
+        if(hints&LAYOUT_FIX_WIDTH) t=tab->getWidth()-2; else t=tab->getDefaultWidth()-2;
         if(t>wtabs) wtabs=t;
         t=pane->getDefaultWidth();
         if(t>wpnls) wpnls=t;
@@ -109,20 +111,20 @@ FXint FXTabBook::getDefaultWidth(){
 
   // Top or bottom tabs
   else{
-    wtabs=wpnls=wmaxtab=ntabs=0;
+    wtabs=wpnls=maxtabw=ntabs=0;
     for(tab=getFirst(); tab && tab->getNext(); tab=tab->getNext()->getNext()){
       pane=tab->getNext();
       if(tab->shown()){
         hints=tab->getLayoutHints();
         if(hints&LAYOUT_FIX_WIDTH) t=tab->getWidth(); else t=tab->getDefaultWidth();
-        if(t>wmaxtab) wmaxtab=t;
+        if(t>maxtabw) maxtabw=t;
         wtabs+=t;
         t=pane->getDefaultWidth();
         if(t>wpnls) wpnls=t;
         ntabs++;
         }
       }
-    if(options&PACK_UNIFORM_WIDTH) wtabs=ntabs*wmaxtab;
+    if(options&PACK_UNIFORM_WIDTH) wtabs=ntabs*maxtabw;
     wtabs+=5;
     w=FXMAX(wtabs,wpnls);
     }
@@ -132,26 +134,26 @@ FXint FXTabBook::getDefaultWidth(){
 
 // Get height
 FXint FXTabBook::getDefaultHeight(){
-  register FXint h,htabs,hmaxtab,hpnls,t,ntabs;
-  register FXuint hints;
+  register FXint h,htabs,maxtabh,hpnls,t,ntabs;
   register FXWindow *tab,*pane;
+  register FXuint hints;
 
   // Left or right tabs
   if(options&TABBOOK_SIDEWAYS){
-    htabs=hpnls=hmaxtab=ntabs=0;
+    htabs=hpnls=maxtabh=ntabs=0;
     for(tab=getFirst(); tab && tab->getNext(); tab=tab->getNext()->getNext()){
       pane=tab->getNext();
       if(tab->shown()){
         hints=tab->getLayoutHints();
         if(hints&LAYOUT_FIX_HEIGHT) t=tab->getHeight(); else t=tab->getDefaultHeight();
-        if(t>hmaxtab) hmaxtab=t;
+        if(t>maxtabh) maxtabh=t;
         htabs+=t;
         t=pane->getDefaultHeight();
         if(t>hpnls) hpnls=t;
         ntabs++;
         }
       }
-    if(options&PACK_UNIFORM_HEIGHT) htabs=ntabs*hmaxtab;
+    if(options&PACK_UNIFORM_HEIGHT) htabs=ntabs*maxtabh;
     htabs+=5;
     h=FXMAX(htabs,hpnls);
     }
@@ -163,7 +165,7 @@ FXint FXTabBook::getDefaultHeight(){
       pane=tab->getNext();
       if(tab->shown()){
         hints=tab->getLayoutHints();
-        if(hints&LAYOUT_FIX_HEIGHT) t=tab->getHeight(); else t=tab->getDefaultHeight();
+        if(hints&LAYOUT_FIX_HEIGHT) t=tab->getHeight()-2; else t=tab->getDefaultHeight()-2;
         if(t>htabs) htabs=t;
         t=pane->getDefaultHeight();
         if(t>hpnls) hpnls=t;
@@ -177,7 +179,7 @@ FXint FXTabBook::getDefaultHeight(){
 
 // Recalculate layout
 void FXTabBook::layout(){
-  register int i,x,y,w,h,px,py,pw,ph,wmaxtab,hmaxtab,newcurrent;
+  register FXint i,xx,yy,x,y,w,h,px,py,pw,ph,maxtabw,maxtabh,cumw,cumh,newcurrent;
   register FXWindow *raisepane=NULL;
   register FXWindow *raisetab=NULL;
   register FXWindow *pane,*tab;
@@ -186,16 +188,15 @@ void FXTabBook::layout(){
   newcurrent=-1;
 
   // Measure tabs again
-  wmaxtab=hmaxtab=0;
+  maxtabw=maxtabh=0;
   for(tab=getFirst(),i=0; tab && tab->getNext(); tab=tab->getNext()->getNext(),i++){
-    pane=tab->getNext();
     if(tab->shown()){
       hints=tab->getLayoutHints();
+      if(newcurrent<0 || i<=current) newcurrent=i;
       if(hints&LAYOUT_FIX_WIDTH) w=tab->getWidth(); else w=tab->getDefaultWidth();
       if(hints&LAYOUT_FIX_HEIGHT) h=tab->getHeight(); else h=tab->getDefaultHeight();
-      if(w>wmaxtab) wmaxtab=w;
-      if(h>hmaxtab) hmaxtab=h;
-      if(newcurrent<0 || i<=current) newcurrent=i;
+      if(w>maxtabw) maxtabw=w;
+      if(h>maxtabh) maxtabh=h;
       }
     }
 
@@ -205,48 +206,90 @@ void FXTabBook::layout(){
   // Left or right tabs
   if(options&TABBOOK_SIDEWAYS){
 
-    // Placements for tab items and tab panels
-    y=border+padtop;
-    py=y;
-    pw=width-padleft-padright-(border<<1)-wmaxtab;
+    // Place panel
+    px=(options&TABBOOK_BOTTOMTABS) ? border+padleft : border+padleft+maxtabw-2;
+    py=border+padtop;
+    pw=width-padleft-padright-(border<<1)-maxtabw+2;
     ph=height-padtop-padbottom-(border<<1);
-    if(options&TABBOOK_BOTTOMTABS){         // Right tabs
-      x=width-padright-border-wmaxtab;
-      px=border+padleft;
-      }
-    else{
-      x=border+padleft;
-      px=x+wmaxtab;
-      }
 
-    // Place all of the children
-    for(tab=getFirst(),i=0; tab && tab->getNext(); tab=tab->getNext()->getNext(),i++){
-      pane=tab->getNext();
+    // Scroll as appropriate
+    for(tab=getFirst(),cumh=i=0; tab && tab->getNext(); tab=tab->getNext()->getNext(),i++){
       if(tab->shown()){
         hints=tab->getLayoutHints();
         if(hints&LAYOUT_FIX_HEIGHT) h=tab->getHeight();
-        else if(options&PACK_UNIFORM_HEIGHT) h=hmaxtab;
+        else if(options&PACK_UNIFORM_HEIGHT) h=maxtabh;
         else h=tab->getDefaultHeight();
+        if(i==current){
+          if(tab->getNext()->getNext()){
+            if(cumh+shift+h>ph-REVEAL_PIXELS-2) shift=ph-cumh-h-REVEAL_PIXELS-2;
+            }
+          else{
+            if(cumh+shift+h>ph-2) shift=ph-cumh-h-2;
+            }
+          if(tab->getPrev()){
+            if(cumh+shift<REVEAL_PIXELS+2) shift=REVEAL_PIXELS+2-cumh;
+            }
+          else{
+            if(cumh+shift<2) shift=2-cumh;
+            }
+          }
+        cumh+=h;
+        }
+      }
+
+    // Adjust shift based on space
+    if(shift<ph-cumh-2) shift=ph-cumh-2;
+    if(shift>0) shift=0;
+
+    // Place all of the children
+    for(tab=getFirst(),yy=py+shift,i=0; tab && tab->getNext(); tab=tab->getNext()->getNext(),i++){
+      pane=tab->getNext();
+      if(tab->shown()){
         pane->position(px,py,pw,ph);
-        if(current==i){
-          if(options&TABBOOK_BOTTOMTABS)      // Right tabs
-            tab->position(x-2,y,wmaxtab+2,h+3);
+        hints=tab->getLayoutHints();
+        if(hints&LAYOUT_FIX_WIDTH) w=tab->getWidth();
+        else if(options&PACK_UNIFORM_WIDTH) w=maxtabw;
+        else w=tab->getDefaultWidth();
+        if(hints&LAYOUT_FIX_HEIGHT) h=tab->getHeight();
+        else if(options&PACK_UNIFORM_HEIGHT) h=maxtabh;
+        else h=tab->getDefaultHeight();
+        if(i<current){
+          y=yy+2;
+          if(y+h>py+ph-2) y=py+ph-2-h;
+          if(y<py+2) y=py+2;
+          if(options&TABBOOK_BOTTOMTABS)
+            tab->position(px+pw-4,y+2,w,h);
           else
-            tab->position(x,y,wmaxtab+2,h+3);
-          tab->update(0,0,wmaxtab+2,h+3);
-          pane->show();
-          raisetab=tab;
-          raisepane=pane;
+            tab->position(px-w+4,y+2,w,h);
+          tab->raise();
+          pane->hide();
+          yy+=h;
+          }
+        else if(i>current){
+          y=yy+2;
+          if(y+h>py+ph-2) y=py+ph-h-2;
+          if(y<py+2) y=py+2;
+          if(options&TABBOOK_BOTTOMTABS)
+            tab->position(px+pw-4,y+2,w,h);
+          else
+            tab->position(px-w+4,y+2,w,h);
+          tab->lower();
+          pane->hide();
+          yy+=h;
           }
         else{
-          if(options&TABBOOK_BOTTOMTABS)      // Right tabs
-            tab->position(x-2,y+2,wmaxtab,h);
+          y=yy;
+          if(y+h>py+ph-2) y=py+ph-h-2;
+          if(y<py) y=py;
+          if(options&TABBOOK_BOTTOMTABS)
+            tab->position(px+pw-2,y,w,h);
           else
-            tab->position(x+2,y+2,wmaxtab,h);
-          tab->update(0,0,wmaxtab,h);
-          pane->hide();
+            tab->position(px-w+2,y,w,h);
+          pane->show();
+          raisepane=pane;
+          raisetab=tab;
+          yy+=h-3;
           }
-        y+=h;
         }
       else{
         pane->hide();
@@ -260,48 +303,90 @@ void FXTabBook::layout(){
   // Top or bottom tabs
   else{
 
-    // Placements for tab items and tab panels
-    x=border+padleft;
-    px=x;
+    // Place panel
+    px=border+padleft;
+    py=(options&TABBOOK_BOTTOMTABS) ? border+padtop : border+padtop+maxtabh-2;
     pw=width-padleft-padright-(border<<1);
-    ph=height-padtop-padbottom-(border<<1)-hmaxtab;
-    if(options&TABBOOK_BOTTOMTABS){         // Bottom tabs
-      y=height-padbottom-border-hmaxtab;
-      py=border+padtop;
-      }
-    else{
-      y=border+padtop;
-      py=y+hmaxtab;
-      }
+    ph=height-padtop-padbottom-(border<<1)-maxtabh+2;
 
-    // Place all of the children
-    for(tab=getFirst(),i=0; tab && tab->getNext(); tab=tab->getNext()->getNext(),i++){
-      pane=tab->getNext();
+    // Scroll as appropriate
+    for(tab=getFirst(),cumw=i=0; tab && tab->getNext(); tab=tab->getNext()->getNext(),i++){
       if(tab->shown()){
         hints=tab->getLayoutHints();
         if(hints&LAYOUT_FIX_WIDTH) w=tab->getWidth();
-        else if(options&PACK_UNIFORM_WIDTH) w=wmaxtab;
+        else if(options&PACK_UNIFORM_WIDTH) w=maxtabw;
         else w=tab->getDefaultWidth();
+        if(i==current){
+          if(tab->getNext()->getNext()){
+            if(cumw+shift+w>pw-REVEAL_PIXELS-2) shift=pw-cumw-w-REVEAL_PIXELS-2;
+            }
+          else{
+            if(cumw+shift+w>pw-2) shift=pw-cumw-w-2;
+            }
+          if(tab->getPrev()){
+            if(cumw+shift<REVEAL_PIXELS+2) shift=REVEAL_PIXELS+2-cumw;
+            }
+          else{
+            if(cumw+shift<2) shift=2-cumw;
+            }
+          }
+        cumw+=w;
+        }
+      }
+
+    // Adjust shift based on space
+    if(shift<pw-cumw-2) shift=pw-cumw-2;
+    if(shift>0) shift=0;
+
+    // Place all of the children
+    for(tab=getFirst(),xx=px+shift,i=0; tab && tab->getNext(); tab=tab->getNext()->getNext(),i++){
+      pane=tab->getNext();
+      if(tab->shown()){
         pane->position(px,py,pw,ph);
-        if(current==i){
-          if(options&TABBOOK_BOTTOMTABS)      // Bottom tabs
-            tab->position(x,y-2,w+3,hmaxtab+2);
+        hints=tab->getLayoutHints();
+        if(hints&LAYOUT_FIX_WIDTH) w=tab->getWidth();
+        else if(options&PACK_UNIFORM_WIDTH) w=maxtabw;
+        else w=tab->getDefaultWidth();
+        if(hints&LAYOUT_FIX_HEIGHT) h=tab->getHeight();
+        else if(options&PACK_UNIFORM_HEIGHT) h=maxtabh;
+        else h=tab->getDefaultHeight();
+        if(i<current){
+          x=xx+2;
+          if(x+w>px+pw-2) x=px+pw-2-w;
+          if(x<px+2) x=px+2;
+          if(options&TABBOOK_BOTTOMTABS)
+            tab->position(x,py+ph-4,w,h);
           else
-            tab->position(x,y,w+3,hmaxtab+2);
-          tab->update(0,0,w+3,hmaxtab+2);
+            tab->position(x,py-h+4,w,h);
+          tab->raise();
+          pane->hide();
+          xx+=w;
+          }
+        else if(i>current){
+          x=xx+2;
+          if(x+w>px+pw-2) x=px+pw-w-2;
+          if(x<px+2) x=px+2;
+          if(options&TABBOOK_BOTTOMTABS)
+            tab->position(x,py+ph-4,w,h);
+          else
+            tab->position(x,py-h+4,w,h);
+          tab->lower();
+          pane->hide();
+          xx+=w;
+          }
+        else{
+          x=xx;
+          if(x+w>px+pw-2) x=px+pw-w-2;
+          if(x<px) x=px;
+          if(options&TABBOOK_BOTTOMTABS)
+            tab->position(x,py+ph-2,w,h);
+          else
+            tab->position(x,py-h+2,w,h);
           pane->show();
           raisepane=pane;
           raisetab=tab;
+          xx+=w-3;
           }
-        else{
-          if(options&TABBOOK_BOTTOMTABS)      // Bottom tabs
-            tab->position(x+2,y-2,w,hmaxtab);
-          else
-            tab->position(x+2,y+2,w,hmaxtab);
-          tab->update(0,0,w,hmaxtab);
-          pane->hide();
-          }
-        x+=w;
         }
       else{
         pane->hide();

@@ -3,7 +3,7 @@
 *             R e a l - V a l u e d   S p i n n e r  W i d g e t                *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2003,2004 by Bill Baxter.   All Rights Reserved.                *
+* Copyright (C) 2003,2006 by Bill Baxter.   All Rights Reserved.                *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXRealSpinner.h,v 1.9 2004/02/08 17:17:34 fox Exp $                      *
+* $Id: FXRealSpinner.h,v 1.16 2006/02/10 03:53:47 fox Exp $                     *
 ********************************************************************************/
 #ifndef FXREALSPINNER_H
 #define FXREALSPINNER_H
@@ -31,14 +31,14 @@
 namespace FX {
 
 
-// Spinner Options
+/// RealSpinner Options
 enum {
-  REALSPIN_NORMAL  =  0,                // Normal, non-cyclic
-  REALSPIN_CYCLIC  =  0x00020000,       // Cyclic spinner
-  REALSPIN_NOTEXT  =  0x00040000,       // No text visible
-  REALSPIN_NOMAX   =  0x00080000,       // Spin all the way up to infinity
-  REALSPIN_NOMIN   =  0x00100000,       // Spin all the way down to -infinity
-  REALSPIN_LOG     =  0x00200000        // Logarithmic rather than linear
+  REALSPIN_NORMAL  =  0,                /// Normal, non-cyclic
+  REALSPIN_CYCLIC  =  0x00020000,       /// Cyclic spinner
+  REALSPIN_NOTEXT  =  0x00040000,       /// No text visible
+  REALSPIN_NOMAX   =  0x00080000,       /// Spin all the way up to infinity
+  REALSPIN_NOMIN   =  0x00100000,       /// Spin all the way down to -infinity
+  REALSPIN_LOG     =  0x00200000        /// Logarithmic rather than linear
   };
 
 
@@ -54,10 +54,9 @@ protected:
   FXArrowButton *upButton;          // The up button
   FXArrowButton *downButton;        // The down button
   FXdouble       range[2];          // Reported data range
-  FXdouble       base;              // Base while incrementing
   FXdouble       incr;              // Increment
+  FXdouble       gran;              // Granularity
   FXdouble       pos;               // Current position
-  FXint          ticks;             // Ticks incrementing
 protected:
   FXRealSpinner();
 private:
@@ -68,7 +67,6 @@ public:
   long onCmdIncrement(FXObject*,FXSelector,void*);
   long onUpdDecrement(FXObject*,FXSelector,void*);
   long onCmdDecrement(FXObject*,FXSelector,void*);
-  long onUpdEntry(FXObject*,FXSelector,void*);
   long onCmdEntry(FXObject*,FXSelector,void*);
   long onChgEntry(FXObject*,FXSelector,void*);
   long onWheelEntry(FXObject*,FXSelector,void*);
@@ -112,10 +110,16 @@ public:
   virtual FXint getDefaultHeight();
 
   /// Increment spinner
-  void increment();
+  void increment(FXbool notify=FALSE);
+
+  /// Increment spinner by certain amount
+  void incrementByAmount(FXdouble amount,FXbool notify=FALSE);
 
   /// Decrement spinner
-  void decrement();
+  void decrement(FXbool notify=FALSE);
+
+  /// Decrement spinner by certain amount
+  void decrementByAmount(FXdouble amount, FXbool notify=FALSE);
 
   /// Return TRUE if in cyclic mode
   FXbool isCyclic() const;
@@ -130,13 +134,13 @@ public:
   void setTextVisible(FXbool shown);
 
   /// Change current value
-  virtual void setValue(FXdouble value);
+  virtual void setValue(FXdouble value,FXbool notify=FALSE);
 
   /// Return current value
   FXdouble getValue() const { return pos; }
 
   /// Change the spinner's range
-  void setRange(FXdouble lo,FXdouble hi);
+  void setRange(FXdouble lo,FXdouble hi,FXbool notify=FALSE);
 
   /// Get the spinner's current range
   void getRange(FXdouble& lo,FXdouble& hi) const { lo=range[0]; hi=range[1]; }
@@ -146,6 +150,12 @@ public:
 
   /// Return spinner increment
   FXdouble getIncrement() const { return incr; }
+
+  /// Change spinner granularity
+  void setGranularity(FXdouble gr);
+
+  /// Return spinner granularity
+  FXdouble getGranularity() const { return gran; }
 
   /// Set the text font
   void setFont(FXFont *fnt);
@@ -157,13 +167,13 @@ public:
   void setHelpText(const FXString& text);
 
   /// Get the status line help text for this spinner
-  FXString getHelpText() const;
+  const FXString& getHelpText() const;
 
   /// Set the tool tip message for this spinner
   void setTipText(const FXString& text);
 
   /// Get the tool tip message for this spinner
-  FXString getTipText() const;
+  const FXString& getTipText() const;
 
   /// Change spinner style
   void setSpinnerStyle(FXuint style);

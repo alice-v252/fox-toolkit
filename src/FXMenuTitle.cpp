@@ -3,7 +3,7 @@
 *                       M e n u   T i t l e   W i d g e t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMenuTitle.cpp,v 1.36 2004/02/08 17:29:06 fox Exp $                     *
+* $Id: FXMenuTitle.cpp,v 1.52 2006/01/22 17:58:36 fox Exp $                     *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -32,7 +34,6 @@
 #include "FXRectangle.h"
 #include "FXRegistry.h"
 #include "FXAccelTable.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXDCWindow.h"
 #include "FXFont.h"
@@ -42,18 +43,17 @@
 
 /*
   Notes:
-  - Accelerators.
   - Help text from constructor is third part; second part should be
     accelerator key combination.
   - When menu label changes, hotkey might have to be adjusted.
   - Fix it so menu stays up when after Alt-F, you press Alt-E.
   - Menu items should be derived from FXLabel.
   - Look into SEL_FOCUS_SELF some more...
-  - New:- under W2K, the underscores for the accelerators no longer
-    show up until the ALT key is pressed [but not sure if I like this,
-    as it makes the accelerator undiscoverable].
   - GUI update disabled while menu is popped up.
+  - Menu shows besides Menu Title if menubar is vertical.
 */
+
+
 
 using namespace FX;
 
@@ -116,7 +116,7 @@ void FXMenuTitle::detach(){
 
 
 // If window can have focus
-FXbool FXMenuTitle::canFocus() const { return 1; }
+bool FXMenuTitle::canFocus() const { return true; }
 
 
 // Get default width
@@ -179,7 +179,7 @@ long FXMenuTitle::onLeave(FXObject* sender,FXSelector sel,void* ptr){
 long FXMenuTitle::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
   handle(this,FXSEL(SEL_FOCUS_SELF,0),ptr);
   if(isEnabled()){
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
     if(flags&FLAG_ACTIVE){
       handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),NULL);
       }
@@ -196,7 +196,7 @@ long FXMenuTitle::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
 long FXMenuTitle::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
   FXEvent* event=(FXEvent*)ptr;
   if(isEnabled()){
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
     if(event->moved){
       handle(this,FXSEL(SEL_COMMAND,ID_UNPOST),ptr);
       }
@@ -210,7 +210,7 @@ long FXMenuTitle::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
 long FXMenuTitle::onKeyPress(FXObject*,FXSelector sel,void* ptr){
   if(isEnabled()){
     FXTRACE((200,"%s::onKeyPress %p keysym=0x%04x state=%04x\n",getClassName(),this,((FXEvent*)ptr)->code,((FXEvent*)ptr)->state));
-    if(target && target->handle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYPRESS,message),ptr)) return 1;
     if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
     }
   return 0;
@@ -221,7 +221,7 @@ long FXMenuTitle::onKeyPress(FXObject*,FXSelector sel,void* ptr){
 long FXMenuTitle::onKeyRelease(FXObject*,FXSelector sel,void* ptr){
   if(isEnabled()){
     FXTRACE((200,"%s::onKeyRelease %p keysym=0x%04x state=%04x\n",getClassName(),this,((FXEvent*)ptr)->code,((FXEvent*)ptr)->state));
-    if(target && target->handle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_KEYRELEASE,message),ptr)) return 1;
     if(pane && pane->shown() && pane->handle(pane,sel,ptr)) return 1;
     }
   return 0;
@@ -253,10 +253,29 @@ long FXMenuTitle::onHotKeyRelease(FXObject*,FXSelector,void*){
 
 // Post the menu
 long FXMenuTitle::onCmdPost(FXObject*,FXSelector,void*){
-  FXint x,y;
+  FXint x,y,side;
   if(pane && !pane->shown()){
     translateCoordinatesTo(x,y,getRoot(),0,0);
-    pane->popup(getParent(),x-1,y+height);
+    side=getParent()->getLayoutHints();
+    if(side&LAYOUT_SIDE_LEFT){  // Vertical
+      y-=1;
+      if(side&LAYOUT_SIDE_BOTTOM){      // On right
+        x-=pane->getDefaultWidth();
+        }
+      else{                             // On left
+        x+=width;
+        }
+      }
+    else{                       // Horizontal
+      x-=1;
+      if(side&LAYOUT_SIDE_BOTTOM){      // On bottom
+        y-=pane->getDefaultHeight();
+        }
+      else{                             // On top
+        y+=height;
+        }
+      }
+    pane->popup(getParent(),x,y);
     if(!getParent()->grabbed()) getParent()->grab();
     }
   flags&=~FLAG_UPDATE;
@@ -316,6 +335,15 @@ void FXMenuTitle::killFocus(){
   }
 
 
+// Change the popup menu
+void FXMenuTitle::setMenu(FXPopup *pup){
+  if(pup!=pane){
+    pane=pup;
+    recalc();
+    }
+  }
+
+
 // Handle repaint
 long FXMenuTitle::onPaint(FXObject*,FXSelector,void* ptr){
   FXEvent *ev=(FXEvent*)ptr;
@@ -360,9 +388,9 @@ long FXMenuTitle::onPaint(FXObject*,FXSelector,void* ptr){
     if(!label.empty()){
       yy+=font->getFontAscent()+(height-font->getFontHeight())/2;
       dc.setForeground(isActive() ? seltextColor : textColor);
-      dc.drawText(xx,yy,label.text(),label.length());
+      dc.drawText(xx,yy,label);
       if(0<=hotoff){
-        dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],1),1);
+        dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],wclen(&label[hotoff])),1);
         }
       }
     }
@@ -376,14 +404,14 @@ long FXMenuTitle::onPaint(FXObject*,FXSelector,void* ptr){
     if(!label.empty()){
       yy+=font->getFontAscent()+(height-font->getFontHeight())/2;
       dc.setForeground(hiliteColor);
-      dc.drawText(xx+1,yy+1,label.text(),label.length());
+      dc.drawText(xx+1,yy+1,label);
       if(0<=hotoff){
-        dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],1),1);
+        dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],wclen(&label[hotoff])),1);
         }
       dc.setForeground(shadowColor);
-      dc.drawText(xx,yy,label.text(),label.length());
+      dc.drawText(xx,yy,label);
       if(0<=hotoff){
-        dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],1),1);
+        dc.fillRectangle(xx+font->getTextWidth(&label[0],hotoff),yy+1,font->getTextWidth(&label[hotoff],wclen(&label[hotoff])),1);
         }
       }
     }
@@ -392,14 +420,14 @@ long FXMenuTitle::onPaint(FXObject*,FXSelector,void* ptr){
 
 
 // Test if logically inside
-FXbool FXMenuTitle::contains(FXint parentx,FXint parenty) const {
+bool FXMenuTitle::contains(FXint parentx,FXint parenty) const {
   FXint x,y;
-  if(FXMenuCaption::contains(parentx,parenty)) return 1;
+  if(FXMenuCaption::contains(parentx,parenty)) return true;
   if(getMenu() && getMenu()->shown()){
     getParent()->translateCoordinatesTo(x,y,getRoot(),parentx,parenty);
-    if(getMenu()->contains(x,y)) return 1;
+    if(getMenu()->contains(x,y)) return true;
     }
-  return 0;
+  return false;
   }
 
 

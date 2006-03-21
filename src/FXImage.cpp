@@ -3,7 +3,7 @@
 *                             I m a g e    O b j e c t                          *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,22 +19,25 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXImage.cpp,v 1.130.2.1 2004/08/28 01:10:02 fox Exp $                        *
+* $Id: FXImage.cpp,v 1.148 2006/01/22 17:58:32 fox Exp $                        *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
 #include "FXRectangle.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXVisual.h"
 #include "FXImage.h"
 #include "FXDCWindow.h"
+#include "FXException.h"
+
 
 /*
   Notes:
@@ -201,8 +204,8 @@ FXImage::FXImage(FXApp* a,const FXColor *pix,FXuint opts,FXint w,FXint h):FXDraw
   visual=getApp()->getDefaultVisual();
   data=(FXColor*)pix;
   options=opts;
-  if(!data && (options&IMAGE_OWNED)){
-    FXCALLOC(&data,FXColor,width*height);
+  if(!data && (options&IMAGE_OWNED)){           // This is confusing use of IMAGE_OWNED
+    if(!FXCALLOC(&data,FXColor,width*height)){ throw FXMemoryException("unable to construct image"); }
     }
   }
 
@@ -236,7 +239,7 @@ void FXImage::create(){
 #endif
 
       // Were we successful?
-      if(!xid){ fxerror("%s::create: unable to create image.\n",getClassName()); }
+      if(!xid){ throw FXImageException("unable to create image"); }
 
       // Render pixels
       render();
@@ -284,17 +287,16 @@ void FXImage::destroy(){
   }
 
 
-// Scan the image and return FALSE if fully opaque
-FXbool FXImage::hasAlpha() const {
+// Scan the image and return false if fully opaque
+bool FXImage::hasAlpha() const {
   if(data){
     register FXint i=width*height-1;
     do{
-      if(((const FXuchar*)(data+i))[3]<255) return TRUE;
+      if(((const FXuchar*)(data+i))[3]<255) return true;
       }
     while(--i>=0);
-    return FALSE;
     }
-  return MAYBE;
+  return false;
   }
 
 
@@ -303,7 +305,7 @@ FXbool FXImage::hasAlpha() const {
 // Find shift amount
 static inline FXuint findshift(unsigned long mask){
   register FXuint sh=0;
-  while(!(mask&(1<<sh))) sh++;
+  while(!(mask&(1UL<<sh))) sh++;
   return sh;
   }
 
@@ -323,7 +325,7 @@ void FXImage::restore(){
     register FXuint  redshift,greenshift,blueshift;
     register FXPixel redmask,greenmask,bluemask;
     register int size,dd,i;
-    register FXbool shmi=FALSE;
+    register bool shmi=false;
     register XImage *xim=NULL;
     register Visual *vis;
     register FXint x,y;
@@ -351,7 +353,7 @@ void FXImage::restore(){
     // Make array for data if needed
     if(!data){
       size=width*height;
-      FXMALLOC(&data,FXColor,size);
+      if(!FXMALLOC(&data,FXColor,size)){ throw FXMemoryException("unable to restore image"); }
       options|=IMAGE_OWNED;
       }
 
@@ -373,7 +375,7 @@ void FXImage::restore(){
           if(shminfo.shmid==-1){ xim->data=NULL; XDestroyImage(xim); xim=NULL; shmi=0; }
           if(shmi){
             shminfo.shmaddr=xim->data=(char*)shmat(shminfo.shmid,0,0);
-            shminfo.readOnly=FALSE;
+            shminfo.readOnly=false;
             XShmAttach(DISPLAY(getApp()),&shminfo);
             FXTRACE((150,"RGBPixmap XSHM attached at memory=%p (%d bytes)\n",xim->data,xim->bytes_per_line*xim->height));
             XShmGetImage(DISPLAY(getApp()),xid,xim,0,0,AllPlanes);
@@ -386,7 +388,7 @@ void FXImage::restore(){
       // Try the old fashioned way
       if(!shmi){
         xim=XGetImage(DISPLAY(getApp()),xid,0,0,width,height,AllPlanes,ZPixmap);
-        if(!xim){ fxerror("%s::restore: unable to restore image.\n",getClassName()); }
+        if(!xim){ throw FXImageException("unable to restore image"); }
         }
 
       // Should have succeeded
@@ -528,7 +530,7 @@ void FXImage::restore(){
     // Make array for data if needed
     if(!data){
       size=width*height;
-      FXMALLOC(&data,FXColor,size);
+      if(!FXMALLOC(&data,FXColor,size)){ throw FXMemoryException("unable to restore image"); }
       options|=IMAGE_OWNED;
       }
 
@@ -552,12 +554,12 @@ void FXImage::restore(){
       bmi.bmiHeader.biClrImportant=0;
 
       // DIB format pads to multiples of 4 bytes...
-      FXMALLOC(&pixels,FXuchar,bytes_per_line*height);
+      if(!FXMALLOC(&pixels,FXuchar,bytes_per_line*height)){ throw FXImageException("unable to restore image"); }
 
       // Make device context
       hdcmem=::CreateCompatibleDC(NULL);
       if(!GetDIBits(hdcmem,(HBITMAP)xid,0,height,pixels,&bmi,DIB_RGB_COLORS)){
-        fxerror("%s::render: unable to restore pixels\n",getClassName());
+        throw FXImageException("unable to restore image");
         }
 
       // Stuff it into our own data structure
@@ -580,143 +582,6 @@ void FXImage::restore(){
 
 
 #endif
-
-/*
-// BitmapToDIB()
-//
-// Parameters:
-//
-// HBITMAP hBitmap  - specifies the bitmap to convert
-//
-// HPALETTE hPal    - specifies the palette to use with the bitmap
-//
-// Return Value:
-//
-// HDIB             - identifies the device-dependent bitmap
-//
-// Description:
-//
-// This function creates a DIB from a bitmap using the specified palette.
-HDIB BitmapToDIB(HBITMAP hBitmap, HPALETTE hPal){
-  BITMAP              bm;         // bitmap structure
-  BITMAPINFOHEADER    bi;         // bitmap header
-  LPBITMAPINFOHEADER  lpbi;       // pointer to BITMAPINFOHEADER
-  DWORD               dwLen;      // size of memory block
-  HANDLE              hDIB, h;    // handle to DIB, temp handle
-  HDC                 hDC;        // handle to DC
-  WORD                biBits;     // bits per pixel
-
-  // Check if bitmap handle is valid
-  if(!hBitmap) return NULL;
-
-  // Fill in BITMAP structure, return NULL if it didn't work
-  if(!GetObject(hBitmap,sizeof(bm),(LPSTR)&bm)) return NULL;
-
-  // If no palette is specified, use default palette
-  if(hPal==NULL) hPal=GetStockObject(DEFAULT_PALETTE);
-
-  // Calculate bits per pixel
-  biBits=bm.bmPlanes*bm.bmBitsPixel;
-
-  // make sure bits per pixel is valid
-  if (biBits <= 1) biBits = 1;
-  else if (biBits <= 4) biBits = 4;
-  else if (biBits <= 8) biBits = 8;
-  else biBits = 24;                           // If greater than 8-bit, force to 24-bit
-
-  // Initialize BITMAPINFOHEADER
-  bi.biSize = sizeof(BITMAPINFOHEADER);
-  bi.biWidth = bm.bmWidth;
-  bi.biHeight = bm.bmHeight;
-  bi.biPlanes = 1;
-  bi.biBitCount = biBits;
-  bi.biCompression = BI_RGB;
-  bi.biSizeImage = 0;
-  bi.biXPelsPerMeter = 0;
-  bi.biYPelsPerMeter = 0;
-  bi.biClrUsed = 0;
-  bi.biClrImportant = 0;
-
-  // Calculate size of memory block required to store BITMAPINFO
-  dwLen=bi.biSize+PaletteSize((LPSTR)&bi);
-
-  // Get a DC
-  hDC=GetDC(NULL);
-
-  // Select and realize our palette
-  hPal=SelectPalette(hDC,hPal,FALSE);
-  RealizePalette(hDC);
-
-  // Alloc memory block to store our bitmap
-  hDIB=GlobalAlloc(GHND,dwLen);
-
-  // If we couldn't get memory block
-  if(!hDIB){                    // Clean up and return NULL
-    SelectPalette(hDC, hPal, TRUE);
-    RealizePalette(hDC);
-    ReleaseDC(NULL, hDC);
-    return NULL;
-    }
-
-  // Lock memory and get pointer to it
-  lpbi=(LPBITMAPINFOHEADER)GlobalLock(hDIB);
-
-  // Use our bitmap info to fill BITMAPINFOHEADER
-  *lpbi=bi;
-
-  // Call GetDIBits with a NULL lpBits param, so it will calculate the biSizeImage field for us
-  GetDIBits(hDC,hBitmap,0,(UINT)bi.biHeight,NULL,(LPBITMAPINFO)lpbi,DIB_RGB_COLORS);
-
-  // Get the info returned by GetDIBits and unlock memory block
-  bi=*lpbi;
-  GlobalUnlock(hDIB);
-
-  // If the driver did not fill in the biSizeImage field, make one up
-  if(bi.biSizeImage==0) bi.biSizeImage=WIDTHBYTES((DWORD)bm.bmWidth*biBits)*bm.bmHeight;
-
-  // Realloc the buffer big enough to hold all the bits
-  dwLen=bi.biSize+PaletteSize((LPSTR)&bi)+bi.biSizeImage;
-  if(h=GlobalReAlloc(hDIB,dwLen,0)){
-    hDIB=h;
-    }
-  else{
-    // Clean up and return NULL
-    GlobalFree(hDIB);
-    hDIB=NULL;
-    SelectPalette(hDC,hPal,TRUE);
-    RealizePalette(hDC);
-    ReleaseDC(NULL,hDC);
-    return NULL;
-    }
-
-  // Lock memory block and get pointer to it
-  lpbi=(LPBITMAPINFOHEADER)GlobalLock(hDIB);
-
-  // Call GetDIBits with a NON-NULL lpBits param, and actualy get the bits this time
-  if(GetDIBits(hDC,hBitmap,0,(UINT)bi.biHeight,(LPSTR)lpbi+(WORD)lpbi->biSize+PaletteSize((LPSTR)lpbi),(LPBITMAPINFO)lpbi,DIB_RGB_COLORS)==0){
-    // Clean up and return NULL
-    GlobalUnlock(hDIB);
-    hDIB=NULL;
-    SelectPalette(hDC,hPal,TRUE);
-    RealizePalette(hDC);
-    ReleaseDC(NULL,hDC);
-    return NULL;
-    }
-
-  bi=*lpbi;
-
-  // Clean up
-  GlobalUnlock(hDIB);
-  SelectPalette(hDC,hPal,TRUE);
-  RealizePalette(hDC);
-  ReleaseDC(NULL,hDC);
-
-  // Return handle to the DIB
-  return hDIB;
-  }
-*/
-
-
 
 
 #ifndef WIN32
@@ -1355,7 +1220,7 @@ void FXImage::render_mono_1_dither(void *xim,FXuchar *img){
 // Render into pixmap
 void FXImage::render(){
   if(xid){
-    register FXbool shmi=FALSE;
+    register bool shmi=false;
     register XImage *xim=NULL;
     register Visual *vis;
     register int dd;
@@ -1395,7 +1260,7 @@ void FXImage::render(){
           if(shminfo.shmid==-1){ xim->data=NULL; XDestroyImage(xim); xim=NULL; shmi=0; }
           if(shmi){
             shminfo.shmaddr=xim->data=(char*)shmat(shminfo.shmid,0,0);
-            shminfo.readOnly=FALSE;
+            shminfo.readOnly=false;
             XShmAttach(DISPLAY(getApp()),&shminfo);
             FXTRACE((150,"RGBPixmap XSHM attached at memory=%p (%d bytes)\n",xim->data,xim->bytes_per_line*xim->height));
             }
@@ -1406,10 +1271,10 @@ void FXImage::render(){
       // Try the old fashioned way
       if(!shmi){
         xim=XCreateImage(DISPLAY(getApp()),vis,dd,(dd==1)?XYPixmap:ZPixmap,0,NULL,width,height,32,0);
-        if(!xim){ fxerror("%s::render: unable to render image.\n",getClassName()); }
+        if(!xim){ throw FXImageException("unable to render image"); }
 
         // Try create temp pixel store
-        if(!FXMALLOC(&xim->data,char,xim->bytes_per_line*height)){ fxerror("%s::render: unable to allocate memory.\n",getClassName()); }
+        if(!FXMALLOC(&xim->data,char,xim->bytes_per_line*height)){ throw FXMemoryException("unable to render image"); }
         }
 
       // Should have succeeded
@@ -1542,9 +1407,8 @@ void FXImage::render(){
 
 void FXImage::render(){
   if(xid){
-    register FXuint bytes_per_line,skip;
+    register FXint bytes_per_line,skip,h,w;
     register FXuchar *src,*dst;
-    register FXint h,w;
     BITMAPINFO bmi;
     FXuchar *pixels;
     HDC hdcmem;
@@ -1569,7 +1433,7 @@ void FXImage::render(){
 
       // DIB format pads to multiples of 4 bytes...
       bytes_per_line=(width*3+3)&~3;
-      FXMALLOC(&pixels,FXuchar,bytes_per_line*height);
+      if(!FXMALLOC(&pixels,FXuchar,bytes_per_line*height)){ throw FXMemoryException("unable to render image"); }
       skip=-bytes_per_line-width*3;
       src=(FXuchar*)data;
       dst=pixels+height*bytes_per_line+width*3;
@@ -1595,8 +1459,8 @@ void FXImage::render(){
       // Windows NT if you pass in a NULL hdc).
       hdcmem=::CreateCompatibleDC(NULL);
       if(!SetDIBits(hdcmem,(HBITMAP)xid,0,height,pixels,&bmi,DIB_RGB_COLORS)){
-//      if(!StretchDIBits(hdcmem,0,0,width,height,0,0,width,height,pixels,&bmi,DIB_RGB_COLORS,SRCCOPY)){
-        fxerror("%s::render: unable to render pixels\n",getClassName());
+//    if(!StretchDIBits(hdcmem,0,0,width,height,0,0,width,height,pixels,&bmi,DIB_RGB_COLORS,SRCCOPY)){
+        throw FXImageException("unable to render image");
         }
       GdiFlush();
       FXFREE(&pixels);
@@ -1607,60 +1471,7 @@ void FXImage::render(){
 
 #endif
 
-/*
-      // Set up the Windows bitmap header
 
-      BITMAPINFOHEADER bmi;
-      bmi.biSize = sizeof(BITMAPINFOHEADER);    // Size of structure
-      bmi.biWidth = m_Image.columns();          // Bitmaps width in pixels
-      bmi.biHeight = (-1)*m_Image.rows();       // Bitmaps height n pixels
-      bmi.biPlanes = 1;                         // Number of planes in the image
-      bmi.biBitCount = 32;                      // The number of bits per pixel
-      bmi.biCompression = BI_RGB;               // The type of compression used
-      bmi.biSizeImage = 0;                      // The size of the image in bytes
-      bmi.biXPelsPerMeter = 0;                  // Horizontal resolution
-      bmi.biYPelsPerMeter = 0;                  // Veritical resolution
-      bmi.biClrUsed = 0;                        // Number of colors actually used
-      bmi.biClrImportant = 0;                   // Colors most important
-
-      // Extract the pixels from Magick++ image object and convert to a DIB section
-      PixelPacket *pPixels = m_Image.getPixels(0,0,m_Image.columns(),m_Image.rows());
-      RGBQUAD *prgbaDIB = 0;
-      HBITMAP hBitmap = CreateDIBSection(
-         pDC->m_hDC,            // handle to device context
-         (BITMAPINFO *)&bmi,    // pointer to structure containing bitmap size, format, and color data
-         DIB_RGB_COLORS,        // color data type indicator: RGB values or palette indices
-         (void**)&prgbaDIB,     // pointer to variable to receive a pointer to the bitmap's bit values
-         NULL,                  // optional handle to a file mapping object
-         0                      // offset to the bitmap bit values within the file mapping object
-         );
-
-
-      if ( !hBitmap ) return;
-      unsigned long nPixels = m_Image.columns() * m_Image.rows();
-      RGBQUAD *pDestPixel = prgbaDIB;
-#if QuantumDepth == 8
-      // Form of PixelPacket is identical to RGBQUAD when QuantumDepth==8
-      memcpy((void*)pDestPixel,(const void*)pPixels,sizeof(PixelPacket)*nPixels);
-#elif QuantumDepth == 16
-      // Transfer pixels, scaling to Quantum
-      for( unsigned long nPixelCount = nPixels; nPixelCount ; nPixelCount-- )
-        {
-          pDestPixel->rgbRed = ScaleQuantumToChar(pPixels->red);
-          pDestPixel->rgbGreen = ScaleQuantumToChar(pPixels->green);
-          pDestPixel->rgbBlue = ScaleQuantumToChar(pPixels->blue);
-          pDestPixel->rgbReserved = 0;
-          ++pDestPixel;
-          ++pPixels;
-        }
-#endif
-      // Now copy the bitmap to device.
-        HDC     hMemDC = CreateCompatibleDC( pDC->m_hDC );
-        SelectObject( hMemDC, hBitmap );
-        BitBlt( pDC->m_hDC, 0, 0, m_Image.columns(), m_Image.rows(), hMemDC, 0, 0, SRCCOPY );
-        DeleteObject( hMemDC );
-    }
-*/
 /*
     register FXuint r=FXREDVAL(color);
     register FXuint g=FXGREENVAL(color);
@@ -1787,13 +1598,13 @@ void FXImage::resize(FXint w,FXint h){
       int dd=visual->getDepth();
       XFreePixmap(DISPLAY(getApp()),xid);
       xid=XCreatePixmap(DISPLAY(getApp()),XDefaultRootWindow(DISPLAY(getApp())),w,h,dd);
-      if(!xid){ fxerror("%s::resize: unable to resize image.\n",getClassName()); }
+      if(!xid){ throw FXImageException("unable to resize image"); }
 #else
       DeleteObject(xid);
       HDC hdc=::GetDC(GetDesktopWindow());
       xid=CreateCompatibleBitmap(hdc,w,h);
       ::ReleaseDC(GetDesktopWindow(),hdc);
-      if(!xid){ fxerror("%s::resize: unable to resize image.\n",getClassName()); }
+      if(!xid){ throw FXImageException("unable to resize image"); }
 #endif
       }
     }
@@ -1801,11 +1612,11 @@ void FXImage::resize(FXint w,FXint h){
   // Resize data array
   if(data){
     if(!(options&IMAGE_OWNED)){         // Need to own array
-      FXMALLOC(&data,FXColor,w*h);
+      if(!FXMALLOC(&data,FXColor,w*h)){ throw FXMemoryException("unable to resize image"); }
       options|=IMAGE_OWNED;
       }
     else if(w*h!=width*height){
-      FXRESIZE(&data,FXColor,w*h);
+      if(!FXRESIZE(&data,FXColor,w*h)){ throw FXMemoryException("unable to resize image"); }
       }
     }
 
@@ -1952,7 +1763,7 @@ void FXImage::scale(FXint w,FXint h,FXint quality){
         case 0:
 
           // Copy to old buffer
-          FXMEMDUP(&interim,data,FXColor,ow*oh);
+          if(!FXMEMDUP(&interim,data,FXColor,ow*oh)){ throw FXMemoryException("unable to scale image"); }
 
           // Resize the pixmap and target buffer
           resize(w,h);
@@ -1966,7 +1777,7 @@ void FXImage::scale(FXint w,FXint h,FXint quality){
         default:
 
           // Allocate interim buffer
-          FXMALLOC(&interim,FXColor,w*oh);
+          if(!FXMALLOC(&interim,FXColor,w*oh)){ throw FXMemoryException("unable to scale image"); }
 
           // Scale horizontally first, placing result into interim buffer
           if(w==ow){
@@ -2001,7 +1812,7 @@ void FXImage::scale(FXint w,FXint h,FXint quality){
 
 
 // Mirror image horizontally and/or vertically
-void FXImage::mirror(FXbool horizontal,FXbool vertical){
+void FXImage::mirror(bool horizontal,bool vertical){
   FXTRACE((100,"%s::mirror(%d,%d)\n",getClassName(),horizontal,vertical));
   if(horizontal || vertical){
     if(data){
@@ -2174,7 +1985,7 @@ void FXImage::rotate(FXint degrees){
       register FXColor *paa,*pbb,*end,*pa,*pb;
       register FXint size=width*height;
       FXColor *olddata;
-      FXMEMDUP(&olddata,data,FXColor,size);
+      if(!FXMEMDUP(&olddata,data,FXColor,size)){ throw FXMemoryException("unable to rotate image"); }
       switch(degrees){
         case 90:
           resize(height,width);
@@ -2253,31 +2064,72 @@ void FXImage::rotate(FXint degrees){
   }
 
 
-// Crop image to given rectangle
-void FXImage::crop(FXint x,FXint y,FXint w,FXint h){
+// Crop image to given rectangle; must have at least one pixel overlap.
+void FXImage::crop(FXint x,FXint y,FXint w,FXint h,FXColor color){
   if(w<1) w=1;
   if(h<1) h=1;
-  if(x<0 || y<0 || x+w>width || y+h>height){ fxerror("%s::crop: rectangle outside of image.\n",getClassName()); }
+  if(x>=width || y>=height || x+w<=0 || y+h<=0){ fxerror("%s::crop: bad arguments.\n",getClassName()); }
   FXTRACE((100,"%s::crop(%d,%d,%d,%d)\n",getClassName(),x,y,w,h));
   if(data){
-    register FXColor *paa,*pbb,*end,*pa,*pb;
-    register FXint oldw=width;
-    register FXint neww=w;
+    register FXColor *pnn,*poo,*yyy,*pn,*po,*xx;
+    register FXint ow=width;
+    register FXint oh=height;
+    register FXint nw=w;
+    register FXint nh=h;
+    register FXint cw;
+    register FXint ch;
     FXColor *olddata;
-    FXMEMDUP(&olddata,data,FXColor,width*height);
-    pbb=olddata+oldw*y+x;
-    resize(w,h);
-    paa=data;
-    end=data+w*h;
+    if(!FXMEMDUP(&olddata,data,FXColor,width*height)){ throw FXMemoryException("unable to crop image"); }
+    resize(nw,nh);
+    pnn=data;
+    yyy=data+nw*nh;
     do{
-      pa=paa; paa+=neww;
-      pb=pbb; pbb+=oldw;
-      do{
-        *pa++=*pb++;
-        }
-      while(pa<paa);
+      *pnn++=color;
       }
-    while(paa<end);
+    while(pnn<yyy);
+    if(x<0){
+      cw=FXMIN(ow,x+nw);
+      if(y<0){
+        pnn=data-nw*y;
+        poo=olddata;
+        ch=FXMIN(oh,y+nh);
+        }
+      else{
+        pnn=data;
+        poo=olddata+ow*y;
+        ch=FXMIN(oh,y+nh)-y;
+        }
+      pnn-=x;
+      }
+    else{
+      cw=FXMIN(ow,x+nw)-x;
+      if(y<0){
+        pnn=data-nw*y;
+        poo=olddata;
+        ch=FXMIN(oh,y+nh);
+        }
+      else{
+        pnn=data;
+        poo=olddata+ow*y;
+        ch=FXMIN(oh,y+nh)-y;
+        }
+      poo+=x;
+      }
+    FXASSERT(cw>0);
+    FXASSERT(ch>0);
+    yyy=pnn+nw*ch;
+    do{
+      pn=pnn;
+      po=poo;
+      xx=pnn+cw;
+      do{
+        *pn++=*po++;
+        }
+      while(pn<xx);
+      pnn+=nw;
+      poo+=ow;
+      }
+    while(pnn<yyy);
     FXFREE(&olddata);
     render();
     }
@@ -2294,7 +2146,7 @@ void FXImage::xshear(FXint shear,FXColor clr){
   FXTRACE((100,"%s::xshear(%d)\n",getClassName(),shear));
   if(data){
     FXColor *olddata;
-    FXMEMDUP(&olddata,data,FXColor,width*height);
+    if(!FXMEMDUP(&olddata,data,FXColor,width*height)){ throw FXMemoryException("unable to xshear image"); }
     resize(neww,height);
     shearx((FXuchar*)data,(FXuchar*)olddata,neww,oldw,height,shear,clr);
     FXFREE(&olddata);
@@ -2313,7 +2165,7 @@ void FXImage::yshear(FXint shear,FXColor clr){
   FXTRACE((100,"%s::yshear(%d)\n",getClassName(),shear));
   if(data){
     FXColor *olddata;
-    FXMEMDUP(&olddata,data,FXColor,width*height);
+    if(!FXMEMDUP(&olddata,data,FXColor,width*height)){ throw FXMemoryException("unable to yshear image"); }
     resize(width,newh);
     sheary((FXuchar*)data,(FXuchar*)olddata,width,newh,oldh,shear,clr);
     FXFREE(&olddata);
@@ -2566,6 +2418,47 @@ int FXImage::ReleaseDC(FXID hdc) const {
 #endif
 
 
+// Attach pixel buffer to image, and assume ownership of it if IMAGE_OWNED is passed
+void FXImage::setData(FXColor *pix,FXuint opts){
+
+  // Free old data
+  if(options&IMAGE_OWNED){ FXFREE(&data); }
+
+  // Only own pixel buffer if one was passed
+  if(pix && (opts&IMAGE_OWNED)){
+    options|=IMAGE_OWNED;
+    }
+  else{
+    options&=~IMAGE_OWNED;
+    }
+
+  // Set the pointer
+  data=pix;
+  }
+
+
+// Populate the image with new pixel data
+void FXImage::setData(FXColor *pix,FXuint opts,FXint w,FXint h){
+
+  // Free old data
+  if(options&IMAGE_OWNED){ FXFREE(&data); }
+
+  // Resize pixmap
+  resize(w,h);
+
+  // Only own pixel buffer if one was passed
+  if(pix && (opts&IMAGE_OWNED)){
+    options|=IMAGE_OWNED;
+    }
+  else{
+    options&=~IMAGE_OWNED;
+    }
+
+  // Set the pointer
+  data=pix;
+  }
+
+
 // Change options
 void FXImage::setOptions(FXuint opts){
   options=(options&~IMAGE_MASK) | (opts&IMAGE_MASK);
@@ -2573,21 +2466,21 @@ void FXImage::setOptions(FXuint opts){
 
 
 // Save pixel data only
-FXbool FXImage::savePixels(FXStream& store) const {
+bool FXImage::savePixels(FXStream& store) const {
   FXuint size=width*height;
   store.save(data,size);
-  return TRUE;
+  return true;
   }
 
 
 // Load pixel data only
-FXbool FXImage::loadPixels(FXStream& store){
+bool FXImage::loadPixels(FXStream& store){
   FXuint size=width*height;
   if(options&IMAGE_OWNED){FXFREE(&data);}
-  if(!FXMALLOC(&data,FXColor,size)) return FALSE;
+  if(!FXMALLOC(&data,FXColor,size)) return false;
   store.load(data,size);
   options|=IMAGE_OWNED;
-  return TRUE;
+  return true;
   }
 
 

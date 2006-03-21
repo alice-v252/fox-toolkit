@@ -3,7 +3,7 @@
 *                     T h e   A d i e   T e x t   E d i t o r                   *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2005 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This program is free software; you can redistribute it and/or modify          *
 * it under the terms of the GNU General Public License as published by          *
@@ -19,7 +19,7 @@
 * along with this program; if not, write to the Free Software                   *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: main.cpp,v 1.12 2004/05/15 17:15:30 fox Exp $                            *
+* $Id: main.cpp,v 1.19 2005/11/23 07:07:06 fox Exp $                            *
 ********************************************************************************/
 #include "fx.h"
 #include <stdio.h>
@@ -35,6 +35,7 @@
 #include "Hilite.h"
 #include "TextWindow.h"
 #include "Adie.h"
+#include "icons.h"
 
 /*
   Note:
@@ -118,7 +119,7 @@ int main(int argc,char *argv[]){
 
     // Load the file
     else{
-      file=FXFile::absolute(argv[arg]);
+      file=FXPath::absolute(argv[arg]);
       window=new TextWindow(&application,"untitled");
       window->create();
       window->loadFile(file);

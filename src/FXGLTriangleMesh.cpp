@@ -3,7 +3,7 @@
 *               O p e n G L   T r i a n g l e   M e s h   O b j e c t           *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * Contributed by: Angel-Ventura Mendo Gomez <ventura@labri.u-bordeaux.fr>       *
 *********************************************************************************
@@ -21,11 +21,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXGLTriangleMesh.cpp,v 1.23 2004/02/20 16:29:39 fox Exp $                *
+* $Id: FXGLTriangleMesh.cpp,v 1.30 2006/01/22 17:58:28 fox Exp $                *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXVec2f.h"
 #include "FXVec3f.h"
@@ -40,7 +42,6 @@
 #include "FXRegistry.h"
 #include "FXAccelTable.h"
 #include "FXObjectList.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXGLViewer.h"
 #include "FXGLTriangleMesh.h"
@@ -205,32 +206,27 @@ void FXGLTriangleMesh::drawshape(FXGLViewer*){
 // Routine to calculate FLAT normals at each triangle
 void FXGLTriangleMesh::generatenormals(){
   register FXint i;
+  FXVec3f vec,a,b,c;
   FXASSERT(vertexBuffer);
-  if(!normalBuffer) FXMALLOC(&normalBuffer,FXfloat,vertexNumber*3);
-
+  if(!normalBuffer){
+    FXMALLOC(&normalBuffer,FXfloat,vertexNumber*3);
+    }
   for(i=0; i<vertexNumber*3; i+=9){
-    FXVec3f a(vertexBuffer[i+0],vertexBuffer[i+1],vertexBuffer[i+2]);
-    FXVec3f b(vertexBuffer[i+3],vertexBuffer[i+4],vertexBuffer[i+5]);
-    FXVec3f c(vertexBuffer[i+6],vertexBuffer[i+7],vertexBuffer[i+8]);
+    a.set(vertexBuffer[i+0],vertexBuffer[i+1],vertexBuffer[i+2]);
+    b.set(vertexBuffer[i+3],vertexBuffer[i+4],vertexBuffer[i+5]);
+    c.set(vertexBuffer[i+6],vertexBuffer[i+7],vertexBuffer[i+8]);
+    vec=normal(a,b,c);
+    normalBuffer[i+0]=vec.x;
+    normalBuffer[i+1]=vec.y;
+    normalBuffer[i+2]=vec.z;
 
-    c-=b;
-    b-=a;
+    normalBuffer[i+3]=vec.x;
+    normalBuffer[i+4]=vec.y;
+    normalBuffer[i+5]=vec.z;
 
-    FXVec3f normal=b^c;
-
-    normal=normalize(normal);
-
-    normalBuffer[i+0]=normal.x;
-    normalBuffer[i+1]=normal.y;
-    normalBuffer[i+2]=normal.z;
-
-    normalBuffer[i+3]=normal.x;
-    normalBuffer[i+4]=normal.y;
-    normalBuffer[i+5]=normal.z;
-
-    normalBuffer[i+6]=normal.x;
-    normalBuffer[i+7]=normal.y;
-    normalBuffer[i+8]=normal.z;
+    normalBuffer[i+6]=vec.x;
+    normalBuffer[i+7]=vec.y;
+    normalBuffer[i+8]=vec.z;
     }
   }
 

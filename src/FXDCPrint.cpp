@@ -3,7 +3,7 @@
 *           D e v i c e   C o n t e x t   F o r   P r i n t i n g               *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXDCPrint.cpp,v 1.41 2004/03/10 23:19:41 fox Exp $                       *
+* $Id: FXDCPrint.cpp,v 1.54 2006/01/22 17:58:21 fox Exp $                       *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -33,7 +35,6 @@
 #include "FXSettings.h"
 #include "FXRegistry.h"
 #include "FXAccelTable.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXId.h"
 #include "FXFont.h"
@@ -138,10 +139,18 @@ void FXDCPrint::bbox(FXfloat x,FXfloat y){
 
 // Send the range of coordinates that will be sent
 FXbool FXDCPrint::setContentRange(FXint pxminArg, FXint pyminArg, FXint pxmaxArg, FXint pymaxArg){
-  pxmin=pxminArg;
-  pymin=pyminArg;
-  pxmax=pxmaxArg;
-  pymax=pymaxArg;
+  if(flags&PRINT_LANDSCAPE){
+    pxmin=pyminArg;
+    pymin=pxminArg;
+    pxmax=pymaxArg;
+    pymax=pxmaxArg;
+    }
+  else{
+    pxmin=pxminArg;
+    pymin=pyminArg;
+    pxmax=pxmaxArg;
+    pymax=pymaxArg;
+    }
   return TRUE;    // Should we check for appropriate ranges?
   }
 
@@ -165,8 +174,10 @@ void FXDCPrint::tfm(FXfloat& xo,FXfloat& yo,FXfloat xi,FXfloat yi){
   if(flags&PRINT_LANDSCAPE){
     mxmin=static_cast<FXfloat>(mediabb.ymin);
     mxmax=static_cast<FXfloat>(mediabb.ymax);
-    mymin=static_cast<FXfloat>(mediawidth-mediabb.xmax);
-    mymax=static_cast<FXfloat>(mediawidth-mediabb.xmin);
+    //mymin=static_cast<FXfloat>(mediawidth-mediabb.xmax);
+    //mymax=static_cast<FXfloat>(mediawidth-mediabb.xmin);
+    mymin=static_cast<FXfloat>(mediabb.xmin);
+    mymax=static_cast<FXfloat>(mediabb.xmax);
     mxrange=mxmax-mxmin;
     myrange=mymax-mymin;
     //xo=xi;
@@ -196,7 +207,7 @@ void FXDCPrint::tfm(FXfloat& xo,FXfloat& yo,FXfloat xi,FXfloat yi){
 FXbool FXDCPrint::beginPrint(FXPrinter& job){
   int numpages;
 
-  Yr=480;  // This is essentially the height of the page(used so that the upper left hand corner is the origin)
+  Yr=792;  //480 // This is essentially the height of the page(used so that the upper left hand corner is the origin)
   Xr=0;
 
   // Print to file
@@ -263,6 +274,7 @@ FXbool FXDCPrint::beginPrint(FXPrinter& job){
     docbb.ymax=(FXfloat)(job.mediaheight-job.topmargin);
     outf("%%%%BoundingBox: %d %d %d %d\n",(int)docbb.xmin,(int)docbb.ymin,(int)docbb.xmax,(int)docbb.ymax);
     }
+  setContentRange((int)docbb.xmin, (int)docbb.ymin, (int)docbb.xmax, (int)docbb.ymax);
 
   // Calculate number of pages
   numpages=0;
@@ -649,12 +661,19 @@ void FXDCPrint::drawRectangle(FXint x,FXint y,FXint w,FXint h){
   }
 
 
+// Draw unfilled rectangles
 void FXDCPrint::drawRectangles(const FXRectangle* rectangles,FXuint nrectangles){
   register FXuint i;
   for(i=0; i<nrectangles; i++){
     drawRectangle(rectangles[i].x,rectangles[i].y,rectangles[i].w,rectangles[i].h);
     }
   }
+
+
+// Unfilled rounded rectangle
+void FXDCPrint::drawRoundRectangle(FXint,FXint,FXint,FXint,FXint,FXint){
+  }
+
 
 // Draw arc (patch from: sancelot@crosswinds.net)
 void FXDCPrint::drawArc(FXint x,FXint y,FXint w,FXint h,FXint ang1,FXint ang2){
@@ -670,6 +689,11 @@ void FXDCPrint::drawArc(FXint x,FXint y,FXint w,FXint h,FXint ang1,FXint ang2){
 
 // Draw arcs
 void FXDCPrint::drawArcs(const FXArc*,FXuint){
+  }
+
+
+// Draw ellipse
+void FXDCPrint::drawEllipse(FXint,FXint,FXint,FXint){
   }
 
 
@@ -693,6 +717,11 @@ void FXDCPrint::fillRectangles(const FXRectangle* rectangles,FXuint nrectangles)
   }
 
 
+// Fill using currently selected ROP mode
+void FXDCPrint::fillRoundRectangle(FXint,FXint,FXint,FXint,FXint,FXint){
+  }
+
+
 // Fill chord
 void FXDCPrint::fillChord(FXint,FXint,FXint,FXint,FXint,FXint){
   }
@@ -711,6 +740,11 @@ void FXDCPrint::fillArc(FXint,FXint,FXint,FXint,FXint,FXint){
 
 // Fill arcs
 void FXDCPrint::fillArcs(const FXArc*,FXuint){
+  }
+
+
+// Fill ellipse
+void FXDCPrint::fillEllipse(FXint,FXint,FXint,FXint){
   }
 
 
@@ -756,8 +790,7 @@ void FXDCPrint::fillComplexPolygonRel(const FXPoint*,FXuint){
   }
 
 
-// Draw string (only foreground bits)
-// Contributed by S. Ancelot <sancelot@online.fr>
+// Draw string with base line starting at x, y
 void FXDCPrint::drawText(FXint x,FXint y,const FXchar* string,FXuint len){
 /*
   FXfloat xx,yy;
@@ -783,15 +816,17 @@ void FXDCPrint::drawText(FXint x,FXint y,const FXchar* string,FXuint len){
   // old font size was hardcoded...
   //outf("(%s) %g %g %d /Courier drawText\n",string,xx,yy,15);
 
-  FXfloat pxrange=static_cast<FXfloat>(pxmax-pxmin);
-  FXfloat pyrange=static_cast<FXfloat>(pymax-pymin);
-  FXfloat mxmin,mxmax,mymin,mymax,mxrange,myrange;
+  //FXfloat pxrange=static_cast<FXfloat>(pxmax-pxmin);
+  //FXfloat pyrange=static_cast<FXfloat>(pymax-pymin);
+  //FXfloat mxmin,mxmax,mymin,mymax,mxrange,myrange;
 
-  if(flags&PRINT_LANDSCAPE){
+/*  if(flags&PRINT_LANDSCAPE){
     mxmin=static_cast<FXfloat>(mediabb.ymin);
     mxmax=static_cast<FXfloat>(mediabb.ymax);
-    mymin=static_cast<FXfloat>(mediawidth-mediabb.xmax);
-    mymax=static_cast<FXfloat>(mediawidth-mediabb.xmin);
+    //mymin=static_cast<FXfloat>(mediawidth-mediabb.xmax);
+    //mymax=static_cast<FXfloat>(mediawidth-mediabb.xmin);
+    mymin=static_cast<FXfloat>(mediabb.xmin);
+    mymax=static_cast<FXfloat>(mediabb.xmax);
     mxrange=mxmax-mxmin;
     myrange=mymax-mymin;
     }
@@ -803,13 +838,15 @@ void FXDCPrint::drawText(FXint x,FXint y,const FXchar* string,FXuint len){
     mxrange=mxmax-mxmin;
     myrange=mymax-mymin;
     }
+*/
   FXfloat fsize=0.1f*font->getSize();
   // Hack...
   // Account for dpi and scale up or down with graph...
   // Perhaps override screen resolution via registry
-  FXint screenres=getApp()->reg().readUnsignedEntry("SETTINGS","screenres",100);
+  //  FXint screenres=getApp()->reg().readUnsignedEntry("SETTINGS","screenres",100);
+
   // Validate
-  if(screenres<50) screenres=50;
+/*  if(screenres<50) screenres=50;
   if(screenres>200) screenres=200;
 
   if(pyrange/pxrange<=myrange/mxrange){ // short/wide
@@ -818,7 +855,7 @@ void FXDCPrint::drawText(FXint x,FXint y,const FXchar* string,FXuint len){
   else{// tall/thin
     fsize *= (myrange/pyrange)*(screenres/72.f);
     }
-
+*/
 
   FXString fname=font->getName();
   if(fname=="times"){
@@ -833,11 +870,11 @@ void FXDCPrint::drawText(FXint x,FXint y,const FXchar* string,FXuint len){
   else{
     fname="Courier";
     }
-  if(font->getWeight()==FONTWEIGHT_BOLD){
-    if(font->getSlant()==FONTSLANT_ITALIC){
+  if(font->getWeight()==FXFont::Bold){
+    if(font->getSlant()==FXFont::Italic){
       fname+="-BoldItalic";
       }
-    else if(font->getSlant()==FONTSLANT_OBLIQUE){
+    else if(font->getSlant()==FXFont::Oblique){
       fname+="-BoldOblique";
       }
     else {
@@ -845,10 +882,10 @@ void FXDCPrint::drawText(FXint x,FXint y,const FXchar* string,FXuint len){
       }
     }
   else{
-    if(font->getSlant()==FONTSLANT_ITALIC){
+    if(font->getSlant()==FXFont::Italic){
       fname+="-Italic";
       }
-    else if(font->getSlant()==FONTSLANT_OBLIQUE){
+    else if(font->getSlant()==FXFont::Oblique){
       fname+="-Oblique";
       }
     }
@@ -856,14 +893,24 @@ void FXDCPrint::drawText(FXint x,FXint y,const FXchar* string,FXuint len){
     fname+="-Roman";
     }
 
-
-  //outf("(%s) %g %g %d /Courier drawText\n",string,xx,yy,(int)fsize);
   outf("(%s) %g %g %d /%s drawText\n",string,xx,yy,(int)fsize,fname.text());
   }
 
 
-// Draw string (both foreground and background bits)
+// Draw string with base line starting at x, y
+void FXDCPrint::drawText(FXint x,FXint y,const FXString& string){
+  drawText(x,y,string.text(),string.length());
+  }
+
+
+// Draw string with base line starting at x, y over filled background
 void FXDCPrint::drawImageText(FXint,FXint,const FXchar*,FXuint){
+  }
+
+
+// Draw string with base line starting at x, y over filled background
+void FXDCPrint::drawImageText(FXint x,FXint y,const FXString& string){
+  drawImageText(x,y,string.text(),string.length());
   }
 
 
@@ -872,25 +919,30 @@ void FXDCPrint::drawArea(const FXDrawable*,FXint,FXint,FXint,FXint,FXint,FXint){
   }
 
 
+// Draw area stretched area from source
+void FXDCPrint::drawArea(const FXDrawable*,FXint,FXint,FXint,FXint,FXint,FXint,FXint,FXint){
+  }
+
+
 // Draw image
 // Contibuted by dwalz@cs.uni-magdeburg.de
 void FXDCPrint::drawImage(const FXImage *img,FXint dx,FXint dy){
   FXuint opts=img->getOptions();
   if(opts&IMAGE_OWNED){
-    FXint    width  = img->getWidth();
-    FXint    height = img->getHeight();
+    FXint    ww  = img->getWidth();
+    FXint    hh = img->getHeight();
     FXuchar *buffer = (FXuchar*)img->getData();
 
-    outf("/picstr %d string def\n",width*3);
-    outf("%d %d translate\n",dx,height-dy);
-    outf("%d %d scale\n",width,-height);
-    outf("%d %d %d\n",width,height,8);
-    outf("[%d 0 0 -%d 0 %d]\n",width,height,height);
+    outf("/picstr %d string def\n",ww*3);
+    outf("%d %d translate\n",dx,hh-dy);
+    outf("%d %d scale\n",ww,-hh);
+    outf("%d %d %d\n",ww,hh,8);
+    outf("[%d 0 0 -%d 0 %d]\n",ww,hh,hh);
     outf("{currentfile picstr readhexstring pop}\n");
     outf("false %d\n",3);
     outf("colorimage\n");
 
-    int end=width*height;
+    int end=ww*hh;
     for(int i=0; i<end ; i+=4){
       outhex(buffer[i]);
       outhex(buffer[i+1]);

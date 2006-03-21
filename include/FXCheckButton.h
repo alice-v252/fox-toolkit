@@ -3,7 +3,7 @@
 *                    C h e c k   B u t t o n   W i d g e t                      *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXCheckButton.h,v 1.26 2004/02/17 21:06:01 fox Exp $                     *
+* $Id: FXCheckButton.h,v 1.32 2006/01/22 17:57:59 fox Exp $                     *
 ********************************************************************************/
 #ifndef FXCHECKBUTTON_H
 #define FXCHECKBUTTON_H
@@ -41,12 +41,18 @@ enum {
 
 
 /**
-* A check button is a tri-state button.  Normally, it is either
+* A Check Button is a tri-state button.  Normally, it is either
 * TRUE or FALSE, and toggles between TRUE or FALSE whenever it is pressed.
 * A third state MAYBE may be set to indicate that no selection has been made yet
 * by the user, or that the state is ambiguous.
-* When pressed, the check button sends a SEL_COMMAND to its target, and the
+* When pressed, the Check Button sends a SEL_COMMAND to its target, and the
 * message data represents the state of the check button.
+* The option CHECKBUTTON_AUTOGRAY (CHECKBUTTON_AUTOHIDE) causes the button to be
+* grayed out (hidden) if its handler does not respond to the SEL_UPDATE message.
+* With the CHECKBUTTON_PLUS option, the Check Button will draw a + or - sign instead
+* of a check.  You can use this to make collapsable panels, by hooking up a Check
+* Button to a layout manager via the ID_TOGGLE_SHOWN message.  This will give a
+* similar visual element as collapsing folders in a Tree List.
 */
 class FXAPI FXCheckButton : public FXLabel {
   FXDECLARE(FXCheckButton)
@@ -86,7 +92,7 @@ public:
   FXCheckButton(FXComposite* p,const FXString& text,FXObject* tgt=NULL,FXSelector sel=0,FXuint opts=CHECKBUTTON_NORMAL,FXint x=0,FXint y=0,FXint w=0,FXint h=0,FXint pl=DEFAULT_PAD,FXint pr=DEFAULT_PAD,FXint pt=DEFAULT_PAD,FXint pb=DEFAULT_PAD);
 
   /// Returns true because a check button can receive focus
-  virtual FXbool canFocus() const;
+  virtual bool canFocus() const;
 
   /// Get default width
   virtual FXint getDefaultWidth();
@@ -95,7 +101,7 @@ public:
   virtual FXint getDefaultHeight();
 
   /// Set check button state (TRUE, FALSE or MAYBE)
-  void setCheck(FXbool state=TRUE);
+  void setCheck(FXbool state=TRUE,FXbool notify=FALSE);
 
   /// Get check button state (TRUE, FALSE or MAYBE)
   FXbool getCheck() const { return check; }
@@ -112,10 +118,10 @@ public:
   /// Set the box background color
   void setBoxColor(FXColor clr);
 
-  /// Get the box background color
+  /// Get the box check color
   FXColor getCheckColor() const { return checkColor; }
 
-  /// Set the box background color
+  /// Set the box check color
   void setCheckColor(FXColor clr);
 
   /// Save check button to a stream

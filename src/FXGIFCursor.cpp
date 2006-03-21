@@ -3,7 +3,7 @@
 *                        G I F   C u r s o r   O b j e c t                      *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2000,2004 by Daniel Gehriger.   All Rights Reserved.            *
+* Copyright (C) 2000,2006 by Daniel Gehriger.   All Rights Reserved.            *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXGIFCursor.cpp,v 1.24 2004/01/14 14:21:28 fox Exp $                     *
+* $Id: FXGIFCursor.cpp,v 1.33 2006/01/22 17:58:27 fox Exp $                     *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXMemoryStream.h"
 #include "FXString.h"
@@ -32,7 +34,6 @@
 #include "FXRectangle.h"
 #include "FXSettings.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXGIFCursor.h"
 
@@ -53,6 +54,11 @@ using namespace FX;
 
 namespace FX {
 
+
+// Suggested file extension
+const FXchar FXGIFCursor::fileExt[]="gif";
+
+
 // Object implementation
 FXIMPLEMENT(FXGIFCursor,FXCursor,NULL,0)
 
@@ -72,18 +78,22 @@ FXGIFCursor::FXGIFCursor(FXApp* a,const void *pix,FXint hx,FXint hy):FXCursor(a,
 
 
 // Save object to stream
-FXbool FXGIFCursor::savePixels(FXStream& store) const {
-  if(!fxsaveGIF(store,data,width,height)) return FALSE;
-  return TRUE;
+bool FXGIFCursor::savePixels(FXStream& store) const {
+  if(fxsaveGIF(store,data,width,height)){
+    return true;
+    }
+  return false;
   }
 
 
 // Load object from stream
-FXbool FXGIFCursor::loadPixels(FXStream& store){
+bool FXGIFCursor::loadPixels(FXStream& store){
   if(options&CURSOR_OWNED){FXFREE(&data);}
-  if(!fxloadGIF(store,data,width,height)) return FALSE;
-  options|=CURSOR_OWNED;
-  return TRUE;
+  if(fxloadGIF(store,data,width,height)){
+    options|=CURSOR_OWNED;
+    return true;
+    }
+  return false;
   }
 
 }

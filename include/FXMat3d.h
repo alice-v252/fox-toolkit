@@ -3,7 +3,7 @@
 *            D o u b l e - P r e c i s i o n   3 x 3   M a t r i x              *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2003,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 2003,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMat3d.h,v 1.3 2004/02/08 17:17:33 fox Exp $                            *
+* $Id: FXMat3d.h,v 1.12 2006/01/22 17:58:05 fox Exp $                           *
 ********************************************************************************/
 #ifndef FXMAT3D_H
 #define FXMAT3D_H
@@ -28,23 +28,57 @@
 namespace FX {
 
 
+class FXQuatd;
+
+
 /// Double-precision 3x3 matrix
 class FXAPI FXMat3d {
 protected:
   FXVec3d m[3];
 public:
-  /// Constructors
+
+  /// Default constructor
   FXMat3d(){}
+
+  /// Initialize matrix from another matrix
+  FXMat3d(const FXMat3d& other);
+
+  /// Initialize matrix from scalar
   FXMat3d(FXdouble w);
+
+  /// Initialize matrix from components
   FXMat3d(FXdouble a00,FXdouble a01,FXdouble a02,
           FXdouble a10,FXdouble a11,FXdouble a12,
           FXdouble a20,FXdouble a21,FXdouble a22);
-  FXMat3d(const FXVec3d& a,const FXVec3d& b,const FXVec3d& c);
-  FXMat3d(const FXMat3d& other);
 
-  /// Assignment operators
+  /// Initialize matrix from three vectors
+  FXMat3d(const FXVec3d& a,const FXVec3d& b,const FXVec3d& c);
+
+  /// Initialize matrix from quaternion
+  FXMat3d(const FXQuatd& quat);
+
+  /// Assignment
   FXMat3d& operator=(const FXMat3d& other);
   FXMat3d& operator=(FXdouble w);
+
+  /// Set value from another matrix
+  FXMat3d& set(const FXMat3d& other);
+
+  /// Set value from scalar
+  FXMat3d& set(FXdouble w);
+
+  /// Set value from components
+  FXMat3d& set(FXdouble a00,FXdouble a01,FXdouble a02,
+               FXdouble a10,FXdouble a11,FXdouble a12,
+               FXdouble a20,FXdouble a21,FXdouble a22);
+
+  /// Set value from three vectors
+  FXMat3d& set(const FXVec3d& a,const FXVec3d& b,const FXVec3d& c);
+
+  /// Set value from quaternion
+  FXMat3d& set(const FXQuatd& quat);
+
+  /// Assignment operators
   FXMat3d& operator+=(const FXMat3d& w);
   FXMat3d& operator-=(const FXMat3d& w);
   FXMat3d& operator*=(FXdouble w);
@@ -59,23 +93,23 @@ public:
   operator FXdouble*(){return m[0];}
   operator const FXdouble*() const {return m[0];}
 
-  /// Other operators
-  friend FXAPI FXMat3d operator+(const FXMat3d& a,const FXMat3d& b);
-  friend FXAPI FXMat3d operator-(const FXMat3d& a,const FXMat3d& b);
-  friend FXAPI FXMat3d operator-(const FXMat3d& a);
-  friend FXAPI FXMat3d operator*(const FXMat3d& a,const FXMat3d& b);
+  /// Unary minus
+  FXMat3d operator-() const;
+
+  /// Matrix and matrix
+  FXMat3d operator+(const FXMat3d& w) const;
+  FXMat3d operator-(const FXMat3d& w) const;
+  FXMat3d operator*(const FXMat3d& w) const;
+
+  /// Multiply matrix and vector
+  FXVec3d operator*(const FXVec3d& v) const;
+  FXVec2d operator*(const FXVec2d& v) const;
+
+  /// Matrix and scalar
   friend FXAPI FXMat3d operator*(FXdouble x,const FXMat3d& a);
   friend FXAPI FXMat3d operator*(const FXMat3d& a,FXdouble x);
   friend FXAPI FXMat3d operator/(const FXMat3d& a,FXdouble x);
   friend FXAPI FXMat3d operator/(FXdouble x,const FXMat3d& a);
-
-  /// Multiply matrix and vector
-  friend FXAPI FXVec3d operator*(const FXVec3d& v,const FXMat3d& m);
-  friend FXAPI FXVec3d operator*(const FXMat3d& a,const FXVec3d& v);
-
-  /// Mutiply matrix and vector, for non-projective matrix
-  friend FXAPI FXVec2d operator*(const FXVec2d& v,const FXMat3d& m);
-  friend FXAPI FXVec2d operator*(const FXMat3d& a,const FXVec2d& v);
 
   /// Set identity matrix
   FXMat3d& eye();
@@ -92,13 +126,13 @@ public:
   FXMat3d& scale(FXdouble s);
 
   /// Determinant
-  friend FXAPI FXdouble det(const FXMat3d& m);
+  FXdouble det() const;
 
   /// Transpose
-  friend FXAPI FXMat3d transpose(const FXMat3d& m);
+  FXMat3d transpose() const;
 
   /// Invert
-  friend FXAPI FXMat3d invert(const FXMat3d& m);
+  FXMat3d invert() const;
 
   /// Save to a stream
   friend FXAPI FXStream& operator<<(FXStream& store,const FXMat3d& m);
@@ -106,6 +140,14 @@ public:
   /// Load from a stream
   friend FXAPI FXStream& operator>>(FXStream& store,FXMat3d& m);
   };
+
+extern FXAPI FXMat3d operator*(FXdouble x,const FXMat3d& a);
+extern FXAPI FXMat3d operator*(const FXMat3d& a,FXdouble x);
+extern FXAPI FXMat3d operator/(const FXMat3d& a,FXdouble x);
+extern FXAPI FXMat3d operator/(FXdouble x,const FXMat3d& a);
+
+extern FXAPI FXStream& operator<<(FXStream& store,const FXMat3d& m);
+extern FXAPI FXStream& operator>>(FXStream& store,FXMat3d& m);
 
 }
 

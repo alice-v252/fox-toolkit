@@ -23,6 +23,7 @@ vcpp/datatarget/datatarget.dsp \
 vcpp/dctest/dctest.dsp \
 vcpp/dialog/dialog.dsp \
 vcpp/dirlist/dirlist.dsp \
+vcpp/expression/expression.dsp \
 vcpp/foursplit/foursplit.dsp \
 vcpp/fox/fox.dsp \
 vcpp/foxdll/foxdll.dsp \
@@ -37,6 +38,7 @@ vcpp/image/image.dsp \
 vcpp/imageviewer/imageviewer.dsp \
 vcpp/layout/layout.dsp \
 vcpp/mditest/mditest.dsp \
+vcpp/memmap/memmap.dsp \
 vcpp/minheritance/minheritance.dsp \
 vcpp/pathfinder/pathfinder.dsp \
 vcpp/ratio/ratio.dsp \

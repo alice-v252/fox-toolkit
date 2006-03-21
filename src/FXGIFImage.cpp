@@ -3,7 +3,7 @@
 *                            G I F   I m a g e   O b j e c t                    *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXGIFImage.cpp,v 1.25 2004/02/08 17:29:06 fox Exp $                      *
+* $Id: FXGIFImage.cpp,v 1.35 2006/01/22 17:58:27 fox Exp $                      *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXMemoryStream.h"
 #include "FXString.h"
@@ -32,7 +34,6 @@
 #include "FXRectangle.h"
 #include "FXSettings.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXGIFImage.h"
 
@@ -50,36 +51,47 @@ using namespace FX;
 
 namespace FX {
 
+
+// Suggested file extension
+const FXchar FXGIFImage::fileExt[]="gif";
+
+
+// Suggested mime type
+const FXchar FXGIFImage::mimeType[]="image/gif";
+
+
 // Object implementation
 FXIMPLEMENT(FXGIFImage,FXImage,NULL,0)
 
 
 // Initialize
-FXGIFImage::FXGIFImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):
-  FXImage(a,NULL,opts,w,h){
+FXGIFImage::FXGIFImage(FXApp* a,const void *pix,FXuint opts,FXint w,FXint h):FXImage(a,NULL,opts,w,h){
   if(pix){
     FXMemoryStream ms;
     ms.open(FXStreamLoad,(FXuchar*)pix);
-    fxloadGIF(ms,data,width,height);
-    options|=IMAGE_OWNED;
+    loadPixels(ms);
     ms.close();
     }
   }
 
 
 // Save object to stream
-FXbool FXGIFImage::savePixels(FXStream& store) const {
-  if(!fxsaveGIF(store,data,width,height)) return FALSE;
-  return TRUE;
+bool FXGIFImage::savePixels(FXStream& store) const {
+  if(fxsaveGIF(store,data,width,height)){
+    return true;
+    }
+  return false;
   }
 
 
 // Load object from stream
-FXbool FXGIFImage::loadPixels(FXStream& store){
-  if(options&IMAGE_OWNED){FXFREE(&data);}
-  if(!fxloadGIF(store,data,width,height)) return FALSE;
-  options|=IMAGE_OWNED;
-  return TRUE;
+bool FXGIFImage::loadPixels(FXStream& store){
+  FXColor *pixels; FXint w,h;
+  if(fxloadGIF(store,pixels,w,h)){
+    setData(pixels,IMAGE_OWNED,w,h);
+    return true;
+    }
+  return false;
   }
 
 

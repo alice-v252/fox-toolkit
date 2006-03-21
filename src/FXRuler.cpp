@@ -3,7 +3,7 @@
 *                            R u l e r   W i d g e t                            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2002,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 2002,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,18 +19,19 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXRuler.cpp,v 1.27.2.1 2004/06/13 03:20:11 fox Exp $                         *
+* $Id: FXRuler.cpp,v 1.55 2006/01/28 20:29:30 fox Exp $                         *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
 #include "FXRectangle.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXDCWindow.h"
 #include "FXFont.h"
@@ -68,22 +69,22 @@
   - Layout:
 
 
-      docSpace                                                           docSpace
+       edgeSpacing                                                             edgeSpacing
     |<-->|                                                                   |<-->|
     |    |                                                                   |    |
     +----+-------------------------------------------------------------------+----+
     |    |                                                                   |    |
     |    |                                                                   |    |
-    |    |  lowerMargin                                         upperMargin  |    |
+    |    |  marginLower                                         marginUpper  |    |
     |    |<---->|                                                     |<---->|    |
     |    |      |                                                     |      |    |
     |    +------+-----------------------------------------------------+------+    |
     |    |      |                                                     |      |    |
-    |    |      |    firstPara                                        |      |    |
+    |    |      |    indentFirst                                      |      |    |
     |    |      |<--------->|                                         |      |    |
     |    |      |           |                                         |      |    |
     |    |      |           |                                         |      |    |
-    |    |      | lowerPara |                               upperPara |      |    |
+    |    |      | indentLower                             indentUpper |      |    |
     |    |      |<---->|    |                                  |<---->|      |    |
     |    |      |      |    |                                  |      |      |    |
     |    |      +------+----+----------------------------------+------+      |    |
@@ -105,7 +106,7 @@
     |    |                                                                   |    |
     |    |                                                                   |    |
     |    |<----------------------------------------------------------------->|    |
-    |                                docSize                                      |
+    |                                documentSize                                 |
     |                                                                             |
     |                                                                             |
     +-----------------------------------------------------------------------------+
@@ -115,11 +116,11 @@
                                    contentSize
 
 
-  - Values of firstPara, lowerPara, may be negative, but not less than -lowerMargin.
+  - Values of indentFirst, indentLower, may be negative, but not less than -marginLower.
 
-  - Likewise upperPara may be negative, but not less than -upperMargin.
+  - Likewise indentUpper may be negative, but not less than -marginUpper.
 
-  - Content width is docSize+2*docSpace; this may exceed viewport width, i.e.
+  - Content width is documentSize+2*edgeSpacing; this may exceed viewport width, i.e.
     the width of the ruler itself (we assume the horizontal ruler extends over
     the entire usable viewport area).
 
@@ -146,6 +147,7 @@
     5) Paragraph tab positions and tab types
     6) Scroll offset
 
+  - Should we constrain indent settings to multiples of pixelPerTick?
 */
 
 #define ARROWBASE       9       // Size of cursor arrows (must be odd)
@@ -153,15 +155,20 @@
 #define MARKERBASE      9       // Base of marker
 #define MARKERLENGTH    4       // The above divided by two
 #define EXTRASPACING    3       // Spacing below/above ticks or text
-#define BETWEENSPACING  2       // Spacing between number and ticks
 #define MAJORTICKSIZE   6       // Length of major ticks
 #define MEDIUMTICKSIZE  4       // Length of medium ticks
-#define MINORTICKSIZE   3       // Length of minor ticks
-#define DOCSPACE        20      // Default space around document
+#define MINORTICKSIZE   2       // Length of minor ticks
+#define EDGESPACING     20      // Default space around edges of document
 #define MARGINSPACE     25      // Default margin space (0.25in x 100dpi)
-//#define DOCSIZE         850     // Default document size (8.5in x 100dpi)
-#define DOCSIZE         400     // Default document size (8.5in x 100dpi)
-#define RULER_MASK      (RULER_NORMAL|RULER_NUMBERS)
+//#define DOCUMENTSIZE         850     // Default document size (8.5in x 100dpi)
+#define DOCUMENTSIZE    600     // Default document size (8.5in x 100dpi)
+#define FUDGE           2       // Fudge proximity
+
+// Ruler style bits
+#define RULER_MASK       (RULER_HORIZONTAL|RULER_VERTICAL|RULER_TICKS_TOP|RULER_TICKS_BOTTOM|RULER_NUMBERS|RULER_ARROW|RULER_MARKERS|RULER_METRIC|RULER_ENGLISH|RULER_MARGIN_ADJUST)
+
+// Ruler alignment bits
+#define RULER_ALIGN_MASK (RULER_ALIGN_CENTER|RULER_ALIGN_LEFT|RULER_ALIGN_RIGHT|RULER_ALIGN_STRETCH)
 
 using namespace FX;
 
@@ -176,8 +183,8 @@ FXDEFMAP(FXRuler) FXRulerMap[]={
   FXMAPFUNC(SEL_MOTION,0,FXRuler::onMotion),
   FXMAPFUNC(SEL_LEFTBUTTONPRESS,0,FXRuler::onLeftBtnPress),
   FXMAPFUNC(SEL_LEFTBUTTONRELEASE,0,FXRuler::onLeftBtnRelease),
-  FXMAPFUNC(SEL_UPDATE,FXRuler::ID_QUERY_TIP,FXRuler::onQueryTip),
-  FXMAPFUNC(SEL_UPDATE,FXRuler::ID_QUERY_HELP,FXRuler::onQueryHelp),
+  FXMAPFUNC(SEL_QUERY_TIP,0,FXRuler::onQueryTip),
+  FXMAPFUNC(SEL_QUERY_HELP,0,FXRuler::onQueryHelp),
   FXMAPFUNC(SEL_COMMAND,FXRuler::ID_SETVALUE,FXRuler::onCmdSetValue),
   FXMAPFUNC(SEL_COMMAND,FXRuler::ID_SETINTVALUE,FXRuler::onCmdSetIntValue),
   FXMAPFUNC(SEL_COMMAND,FXRuler::ID_GETINTVALUE,FXRuler::onCmdGetIntValue),
@@ -196,21 +203,23 @@ FXIMPLEMENT(FXRuler,FXFrame,FXRulerMap,ARRAYNUMBER(FXRulerMap))
 FXRuler::FXRuler(){
   flags|=FLAG_ENABLED|FLAG_SHOWN;
   font=(FXFont*)-1L;
+  documentSize=DOCUMENTSIZE;
+  edgeSpacing=EDGESPACING;
+  marginLower=MARGINSPACE;
+  marginUpper=MARGINSPACE;
+  indentFirst=0;
+  indentLower=0;
+  indentUpper=0;
   textColor=0;
-  lowerMargin=MARGINSPACE;
-  upperMargin=MARGINSPACE;
-  firstPara=0;
-  lowerPara=0;
-  upperPara=0;
-  docSpace=DOCSPACE;
-  docSize=DOCSIZE;
-  contentSize=DOCSPACE*DOCSPACE+DOCSIZE;
-  arrowPos=DOCSPACE;
+  arrowPos=0;
   pixelPerTick=10.0;
   majorTicks=10;
   mediumTicks=5;
   tinyTicks=1;
   shift=0;
+  pos=0;
+  off=0;
+  mode=MOUSE_NONE;
   }
 
 
@@ -223,23 +232,31 @@ FXRuler::FXRuler(FXComposite* p,FXObject* tgt,FXSelector sel,FXuint opts,FXint x
   font=getApp()->getNormalFont();
   backColor=getApp()->getBackColor();
   textColor=getApp()->getForeColor();
-  lowerMargin=MARGINSPACE;
-  upperMargin=MARGINSPACE;
-  firstPara=20;
-  lowerPara=10;
-  upperPara=10;
-//  firstPara=0;
-//  lowerPara=0;
-//  upperPara=0;
-  docSpace=DOCSPACE;
-  docSize=DOCSIZE;
-  contentSize=DOCSPACE*DOCSPACE+DOCSIZE;
-  arrowPos=DOCSPACE;
+  documentSize=DOCUMENTSIZE;
+  edgeSpacing=EDGESPACING;
+  marginLower=MARGINSPACE;
+  marginUpper=MARGINSPACE;
+  indentFirst=0;
+  indentLower=0;
+  indentUpper=0;
+  arrowPos=0;
   pixelPerTick=10.0;
-  majorTicks=10;
-  mediumTicks=5;
-  tinyTicks=1;
+  if(options&RULER_ENGLISH){
+    numberTicks=8;
+    majorTicks=8;
+    mediumTicks=4;
+    tinyTicks=1;
+    }
+  else{
+    numberTicks=10;
+    majorTicks=10;
+    mediumTicks=5;
+    tinyTicks=1;
+    }
   shift=0;
+  pos=0;
+  off=0;
+  mode=MOUSE_NONE;
   }
 
 
@@ -257,22 +274,36 @@ void FXRuler::detach(){
   }
 
 
+// Get lower edge of document
+FXint FXRuler::getDocumentLower() const {
+  return shift+pos+edgeSpacing;
+  }
+
+
+// Get upper edge of document
+FXint FXRuler::getDocumentUpper() const {
+  return shift+pos+edgeSpacing+documentSize;
+  }
+
+
 // Get default width
 FXint FXRuler::getDefaultWidth(){
-  FXint tw,th,s=0,w=0;
+  FXint tw,th,w=0;
   if(options&RULER_VERTICAL){           // Vertical
     if(options&RULER_NUMBERS){
       tw=font->getTextWidth("0",1);     // Ruler should be same width regardless of orientation
-      th=font->getFontHeight();
-      w=FXMAX(tw,th);
+      th=font->getFontAscent();         // Since we use numbers only, don't account for descenders
+      w=FXMAX(tw,th)+2;
       }
     if(options&(RULER_TICKS_LEFT|RULER_TICKS_RIGHT)){
-      if(w) s=BETWEENSPACING;
-      if(!(options&RULER_TICKS_LEFT)) w=MAJORTICKSIZE+s+w;              // Ticks on right
-      else if(!(options&RULER_TICKS_RIGHT)) w=MAJORTICKSIZE+s+w;        // Ticks on left
-      else w=FXMAX(MAJORTICKSIZE,w);                                    // Ticks centered
+      if(!(options&RULER_TICKS_LEFT)) w+=MAJORTICKSIZE;         // Ticks on right
+      else if(!(options&RULER_TICKS_RIGHT)) w+=MAJORTICKSIZE;   // Ticks on left
+      else w=FXMAX(MAJORTICKSIZE,w);                            // Ticks centered
       }
-    w+=EXTRASPACING+EXTRASPACING+4;
+    w+=4;
+    }
+  else{
+    // FIXME
     }
   return w+padleft+padright+(border<<1);
   }
@@ -280,22 +311,62 @@ FXint FXRuler::getDefaultWidth(){
 
 // Get default height
 FXint FXRuler::getDefaultHeight(){
-  FXint tw,th,s=0,h=0;
+  FXint tw,th,h=0;
   if(!(options&RULER_VERTICAL)){        // Horizontal
     if(options&RULER_NUMBERS){
       tw=font->getTextWidth("0",1);     // Ruler should be same width regardless of orientation
-      th=font->getFontHeight();
-      h=FXMAX(tw,th);
+      th=font->getFontAscent();         // Since we use numbers only, don't account for descenders
+      h=FXMAX(tw,th)+2;
       }
     if(options&(RULER_TICKS_TOP|RULER_TICKS_BOTTOM)){
-      if(h) s=BETWEENSPACING;
-      if(!(options&RULER_TICKS_TOP)) h=MAJORTICKSIZE+s+h;               // Ticks on bottom
-      else if(!(options&RULER_TICKS_BOTTOM)) h=MAJORTICKSIZE+s+h;       // Ticks on top
-      else h=FXMAX(MAJORTICKSIZE,h);                                    // Ticks centered
+      if(!(options&RULER_TICKS_TOP)) h+=MAJORTICKSIZE;          // Ticks on bottom
+      else if(!(options&RULER_TICKS_BOTTOM)) h+=MAJORTICKSIZE;  // Ticks on top
+      else h=FXMAX(MAJORTICKSIZE,h);                            // Ticks centered
       }
-    h+=EXTRASPACING+EXTRASPACING+4;
+    h+=4;
+    }
+  else{
+    // FIXME
     }
   return h+padtop+padbottom+(border<<1);
+  }
+
+
+// Recalculate layout
+void FXRuler::layout(){
+  FXint space=(options&RULER_VERTICAL) ? height : width;
+
+  // Stretched
+  if((options&RULER_ALIGN_LEFT) && (options&RULER_ALIGN_RIGHT)){
+    shift=0;
+    setContentSize(space,TRUE);
+    }
+
+  // Left aligned
+  else if(options&RULER_ALIGN_LEFT){
+    shift=0;
+    }
+
+  // Right-aligned
+  else if(options&RULER_ALIGN_RIGHT){
+    shift=space-getContentSize();
+    }
+
+  // Centered
+  else{
+    shift=(space-getContentSize())>>1;
+    }
+
+  // Keep positive
+  if(shift<0) shift=0;
+
+  setValue(arrowPos);
+
+  // Redraw
+  update();
+
+  // Clean
+  flags&=~FLAG_DIRTY;
   }
 
 
@@ -513,114 +584,241 @@ void FXRuler::drawDownMarker(FXDCWindow& dc,FXint x,FXint y){
 
 // Handle repaint
 long FXRuler::onPaint(FXObject*,FXSelector,void* ptr){
+  FXint boxx,boxy,boxw,boxh,p,tick,lower,upper,th,tw;
   FXEvent *ev=(FXEvent*)ptr;
   FXDCWindow dc(this,ev);
-  FXint docx,docy,docw,doch,boxx,boxy,boxw,boxh,doclo,dochi,p;
-  FXdouble lower,upper,inc,tick;
+  FXchar numeral;
 
   // Background
   dc.setForeground(baseColor);
   dc.fillRectangle(ev->rect.x,ev->rect.y,ev->rect.w,ev->rect.h);
 
-  boxx=padleft+border;
-  boxy=padtop+border;
-  boxw=width-padleft-padright-(border<<1);
-  boxh=height-padtop-padbottom-(border<<1);
+  // Set font for numbers
+  dc.setFont(font);
+  th=font->getFontAscent();
 
   // Vertically oriented ruler
   if(options&RULER_VERTICAL){
 
-    docx=padleft+border;
-    docy=shift+docSpace;
-    docw=width-padleft-padright-border-border;
-    doch=docSpace+docSize+docSpace;
+    // Document well size
+    boxx=border+padleft;
+    boxy=getDocumentLower()+marginLower;
+    boxw=width-padleft-padright-border-border;
+    boxh=documentSize-marginUpper-marginLower;
 
-    boxx=docx;
-    boxy=docy+lowerMargin;
-    boxw=docw;
-    boxh=doch-upperMargin-lowerMargin;
+    // Draw cartouche
+    drawGrooveRectangle(dc,boxx,boxy-marginLower-1,boxw,documentSize+2);
 
-    drawGrooveRectangle(dc,docx,docy,docw,doch+1);      // One pixel extra!
-
+    // Draw document well
     dc.setForeground(backColor);
-    dc.fillRectangle(boxx+2,boxy+2,boxw-4,boxh-1);
+    dc.fillRectangle(boxx+2,boxy+1,boxw-4,boxh);
 
     dc.setForeground(shadowColor);
-    dc.fillRectangle(boxx,boxy,boxw-2,1);
+    dc.fillRectangle(boxx,boxy-1,boxw-2,1);
     dc.fillRectangle(boxx,boxy+boxh-1,boxw-2,1);
 
     dc.setForeground(borderColor);
-    dc.fillRectangle(boxx+1,boxy+1,boxw-3,1);
-    dc.fillRectangle(boxx+1,boxy+1,1,boxh-2);
+    dc.fillRectangle(boxx+1,boxy,boxw-3,1);
+    dc.fillRectangle(boxx+1,boxy,1,boxh);
 
     dc.setForeground(baseColor);
-    dc.fillRectangle(boxx+2,boxy+boxh-2,boxw-4,1);
+    dc.fillRectangle(boxx+2,boxy+boxh-1,boxw-4,1);
+
+    // Draw ticks or numbers
+    if(options&(RULER_TICKS_TOP|RULER_TICKS_BOTTOM|RULER_NUMBERS)){
+      FXASSERT(pixelPerTick>0.0);
+
+      // Determine number of ticks to draw
+      lower=-(FXint)((FXdouble)marginLower/pixelPerTick);
+      upper=(FXint)((FXdouble)(documentSize+pixelPerTick-marginLower-1)/pixelPerTick);
+
+      dc.setForeground(borderColor);
+
+      // Draw ticks and numbers
+      for(tick=lower; tick<upper; tick++){
+
+        // Skip zero, it looks ugly
+        if(tick){
+
+          // Figure position
+          p=boxy+(FXint)(0.5+tick*pixelPerTick);
+
+          // Draw number
+          if((options&RULER_NUMBERS) && (tick%numberTicks==0)){
+
+            numeral='0'+(FXint)((FXABS(tick)/majorTicks)%10);
+
+            tw=font->getTextWidth(&numeral,1);
+
+            if((options&RULER_TICKS_LEFT)&&(options&RULER_TICKS_RIGHT)){
+              dc.drawText(boxx+((boxw-tw)>>1),p+(th>>1),&numeral,1);
+              }
+            else if(options&RULER_TICKS_LEFT){
+              dc.drawText(boxx+2+MAJORTICKSIZE+1,p+(th>>1),&numeral,1);
+              }
+            else{
+              dc.drawText(boxx+boxw-4-MAJORTICKSIZE-1-tw,p+(th>>1),&numeral,1);
+              }
+            }
+
+          // Draw major tick
+          if(tick%majorTicks==0){
+            if((options&RULER_TICKS_TOP)&&(options&RULER_TICKS_RIGHT)){
+              if(!(options&RULER_NUMBERS) || (tick%numberTicks)) dc.fillRectangle(boxx+(boxw>>1)-(MAJORTICKSIZE>>1),p,MAJORTICKSIZE,1);
+              }
+            else if(options&RULER_TICKS_LEFT){
+              dc.fillRectangle(boxx+2,p,MAJORTICKSIZE,1);
+              }
+            else{
+              dc.fillRectangle(boxx+boxw-2-MAJORTICKSIZE,p,MAJORTICKSIZE,1);
+              }
+            }
+
+          // Draw medium tick
+          else if(tick%mediumTicks==0){
+            if((options&RULER_TICKS_LEFT)&&(options&RULER_TICKS_RIGHT)){
+              dc.fillRectangle(boxx+(boxw>>1)-(MEDIUMTICKSIZE>>1),p,MEDIUMTICKSIZE,1);
+              }
+            else if(options&RULER_TICKS_LEFT){
+              dc.fillRectangle(boxx+2,p,MEDIUMTICKSIZE,1);
+              }
+            else{
+              dc.fillRectangle(boxx+boxw-2-MEDIUMTICKSIZE,p,MEDIUMTICKSIZE,1);
+              }
+            }
+
+          // Draw tiny tick
+          else if(tick%tinyTicks==0){
+            if((options&RULER_TICKS_LEFT)&&(options&RULER_TICKS_RIGHT)){
+              dc.fillRectangle(boxx+(boxw>>1)-(MINORTICKSIZE>>1),p,MINORTICKSIZE,1);
+              }
+            else if(options&RULER_TICKS_LEFT){
+              dc.fillRectangle(boxx+2,p,MINORTICKSIZE,1);
+              }
+            else{
+              dc.fillRectangle(boxx+boxw-2-MINORTICKSIZE,p,MINORTICKSIZE,1);
+              }
+            }
+          }
+        }
+      }
 
     // Draw optional arrow to signify cursor location
     if(options&RULER_ARROW){
       dc.setForeground(textColor);
       if(options&RULER_TICKS_RIGHT)                     // Ticks on right or center
-        drawRightArrow(dc,boxx+boxw-3,arrowPos);
+        drawRightArrow(dc,boxx+boxw-3,getDocumentLower()+arrowPos);
       else if(options&RULER_TICKS_LEFT)                 // Ticks on left
-        drawLeftArrow(dc,boxx+2,arrowPos);
+        drawLeftArrow(dc,boxx+2,getDocumentLower()+arrowPos);
       }
 
     // Draw optional markers for paragraph margins
     if(options&RULER_MARKERS){
       dc.setForeground(textColor);
-      drawLeftMarker(dc,boxx+boxw-MARKERLENGTH-MARKERLENGTH+1,boxy+lowerPara);
-      drawLeftMarker(dc,boxx+boxw-MARKERLENGTH-MARKERLENGTH+1,boxy+boxh-upperPara-1);
+      drawLeftMarker(dc,boxx+boxw-MARKERLENGTH-MARKERLENGTH+1,boxy+indentLower);
+      drawLeftMarker(dc,boxx+boxw-MARKERLENGTH-MARKERLENGTH+1,boxy+boxh-indentUpper-1);
       }
     }
 
   // Horizontally oriented ruler
   else{
 
-    docx=shift+docSpace;
-    docy=border+padtop;
-    docw=docSpace+docSize+docSpace;
-    doch=height-padtop-padbottom-border-border;
+    // Document well size
+    boxx=getDocumentLower()+marginLower;
+    boxy=border+padtop;
+    boxw=documentSize-marginUpper-marginLower;
+    boxh=height-padtop-padbottom-border-border;
 
-    boxx=docx+lowerMargin;
-    boxy=docy;
-    boxw=docw-upperMargin-lowerMargin;
-    boxh=doch;
+    // Draw cartouche
+    drawGrooveRectangle(dc,boxx-marginLower-1,boxy,documentSize+2,boxh);
 
-    doclo=-lowerMargin;
-    dochi=docw-lowerMargin;
-
-    drawGrooveRectangle(dc,docx,docy,docw+1,doch);      // One pixel extra!
-
+    // Draw document well
     dc.setForeground(backColor);
-    dc.fillRectangle(boxx+2,boxy+2,boxw-1,boxh-4);
-
+    dc.fillRectangle(boxx+1,boxy+2,boxw,boxh-4);
     dc.setForeground(shadowColor);
-    dc.fillRectangle(boxx,boxy,1,boxh-2);
+    dc.fillRectangle(boxx-1,boxy,1,boxh-2);
     dc.fillRectangle(boxx+boxw-1,boxy+1,1,boxh-2);
-
     dc.setForeground(borderColor);
-    dc.fillRectangle(boxx+1,boxy+1,boxw-2,1);
-    dc.fillRectangle(boxx+1,boxy+1,1,boxh-2);
-
+    dc.fillRectangle(boxx,boxy+1,boxw-1,1);
+    dc.fillRectangle(boxx,boxy+1,1,boxh-2);
     dc.setForeground(baseColor);
-    dc.fillRectangle(boxx+2,boxy+boxh-2,boxw-3,1);
+    dc.fillRectangle(boxx+1,boxy+boxh-2,boxw-2,1);
 
-    // Draw ticks
-    if(options&(RULER_TICKS_TOP|RULER_TICKS_BOTTOM)){
-      inc=tinyTicks*pixelPerTick;
-      lower=doclo;
-      upper=dochi;
+    // Draw ticks or numbers
+    if(options&(RULER_TICKS_TOP|RULER_TICKS_BOTTOM|RULER_NUMBERS)){
+      FXASSERT(pixelPerTick>0.0);
+
+      // Determine number of ticks to draw
+      lower=-(FXint)((FXdouble)marginLower/pixelPerTick);
+      upper=(FXint)((FXdouble)(documentSize+pixelPerTick-marginLower-1)/pixelPerTick);
+
       dc.setForeground(borderColor);
-      for(tick=lower; tick<upper; tick+=inc){
-        p=boxx+(FXint)(tick+0.5);
-        if((options&RULER_TICKS_TOP)&&(options&RULER_TICKS_BOTTOM)){
-          dc.fillRectangle(p,boxy+(boxh>>1)-(MINORTICKSIZE>>1),1,MINORTICKSIZE);
-          }
-        else if(options&RULER_TICKS_TOP){
-          dc.fillRectangle(p,boxy+2,1,MINORTICKSIZE);
-          }
-        else{
-          dc.fillRectangle(p,boxy+boxh-2-MINORTICKSIZE,1,MINORTICKSIZE);
+
+      // Draw ticks and numbers
+      for(tick=lower; tick<upper; tick++){
+
+        // Skip zero, it looks ugly
+        if(tick){
+
+          // Figure position
+          p=boxx+(FXint)(0.5+tick*pixelPerTick);
+
+          // Draw number
+          if((options&RULER_NUMBERS) && (tick%numberTicks==0)){
+
+            numeral='0'+(FXint)((FXABS(tick)/majorTicks)%10);
+
+            tw=font->getTextWidth(&numeral,1);
+
+            if((options&RULER_TICKS_TOP)&&(options&RULER_TICKS_BOTTOM)){
+              dc.drawText(p-(tw>>1),boxy+((boxh-th)>>1)+th-1,&numeral,1);
+              }
+            else if(options&RULER_TICKS_TOP){
+              dc.drawText(p-(tw>>1),boxy+2+MAJORTICKSIZE+th,&numeral,1);
+              }
+            else{
+              dc.drawText(p-(tw>>1),boxy+boxh-4-MAJORTICKSIZE,&numeral,1);
+              }
+            }
+
+          // Draw major tick
+          if(tick%majorTicks==0){
+            if((options&RULER_TICKS_TOP)&&(options&RULER_TICKS_BOTTOM)){
+              if(!(options&RULER_NUMBERS) || (tick%numberTicks)) dc.fillRectangle(p,boxy+(boxh>>1)-(MAJORTICKSIZE>>1),1,MAJORTICKSIZE);
+              }
+            else if(options&RULER_TICKS_TOP){
+              dc.fillRectangle(p,boxy+2,1,MAJORTICKSIZE);
+              }
+            else{
+              dc.fillRectangle(p,boxy+boxh-2-MAJORTICKSIZE,1,MAJORTICKSIZE);
+              }
+            }
+
+          // Draw medium tick
+          else if(tick%mediumTicks==0){
+            if((options&RULER_TICKS_TOP)&&(options&RULER_TICKS_BOTTOM)){
+              dc.fillRectangle(p,boxy+(boxh>>1)-(MEDIUMTICKSIZE>>1),1,MEDIUMTICKSIZE);
+              }
+            else if(options&RULER_TICKS_TOP){
+              dc.fillRectangle(p,boxy+2,1,MEDIUMTICKSIZE);
+              }
+            else{
+              dc.fillRectangle(p,boxy+boxh-2-MEDIUMTICKSIZE,1,MEDIUMTICKSIZE);
+              }
+            }
+
+          // Draw tiny tick
+          else if(tick%tinyTicks==0){
+            if((options&RULER_TICKS_TOP)&&(options&RULER_TICKS_BOTTOM)){
+              dc.fillRectangle(p,boxy+(boxh>>1)-(MINORTICKSIZE>>1),1,MINORTICKSIZE);
+              }
+            else if(options&RULER_TICKS_TOP){
+              dc.fillRectangle(p,boxy+2,1,MINORTICKSIZE);
+              }
+            else{
+              dc.fillRectangle(p,boxy+boxh-2-MINORTICKSIZE,1,MINORTICKSIZE);
+              }
+            }
           }
         }
       }
@@ -629,16 +827,16 @@ long FXRuler::onPaint(FXObject*,FXSelector,void* ptr){
     if(options&RULER_ARROW){
       dc.setForeground(textColor);
       if(options&RULER_TICKS_BOTTOM)                    // Ticks on bottom or center
-        drawDownArrow(dc,arrowPos,boxy+boxh-3);
+        drawDownArrow(dc,getDocumentLower()+arrowPos,boxy+boxh-3);
       else if(options&RULER_TICKS_TOP)                  // Ticks on top
-        drawUpArrow(dc,arrowPos,boxy+2);
+        drawUpArrow(dc,getDocumentLower()+arrowPos,boxy+2);
       }
 
     // Draw optional markers for paragraph margins
     if(options&RULER_MARKERS){
-      drawDownMarker(dc,boxx+firstPara,boxy+MARKERLENGTH+MARKERLENGTH-2);
-      drawUpMarker(dc,boxx+lowerPara,boxy+boxh-MARKERLENGTH-MARKERLENGTH+1);
-      drawUpMarker(dc,boxx+boxw-upperPara-1,boxy+boxh-MARKERLENGTH-MARKERLENGTH+1);
+      drawDownMarker(dc,boxx+indentFirst,boxy+MARKERLENGTH+MARKERLENGTH-2);
+      drawUpMarker(dc,boxx+indentLower,boxy+boxh-MARKERLENGTH-MARKERLENGTH+1);
+      drawUpMarker(dc,boxx+boxw-indentUpper-1,boxy+boxh-MARKERLENGTH-MARKERLENGTH+1);
       }
     }
 
@@ -650,11 +848,33 @@ long FXRuler::onPaint(FXObject*,FXSelector,void* ptr){
 
 // Pressed LEFT button
 long FXRuler::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
+  register FXEvent* event=(FXEvent*)ptr;
+  register FXint lo,hi;
   flags&=~FLAG_TIP;
   if(isEnabled()){
     grab();
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
     flags&=~FLAG_UPDATE;
+    mode=picked(event->win_x,event->win_y);
+    if(mode){
+      lo=pos+edgeSpacing+marginLower;
+      hi=lo+documentSize-marginUpper-marginLower;
+      if(options&RULER_VERTICAL){
+        setDragCursor(getApp()->getDefaultCursor(DEF_DRAGH_CURSOR));
+        off=event->win_y;
+        }
+      else{
+        setDragCursor(getApp()->getDefaultCursor(DEF_DRAGV_CURSOR));
+        off=event->win_x;
+        }
+      switch(mode){
+        case MOUSE_MARG_LOWER: off-=lo; break;
+        case MOUSE_MARG_UPPER: off-=hi; break;
+        case MOUSE_PARA_FIRST: off-=lo+indentFirst; break;
+        case MOUSE_PARA_LOWER: off-=lo+indentLower; break;
+        case MOUSE_PARA_UPPER: off-=hi-indentUpper; break;
+        }
+      }
     return 1;
     }
   return 0;
@@ -666,26 +886,86 @@ long FXRuler::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
   if(isEnabled()){
     ungrab();
     flags|=FLAG_UPDATE;
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
+    mode=MOUSE_NONE;
+    setDragCursor(getApp()->getDefaultCursor(DEF_ARROW_CURSOR));
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
     return 1;
     }
   return 0;
   }
 
 
+// Determine what was picked
+FXint FXRuler::picked(FXint x,FXint y){
+  register FXint wlo,whi,lo,hi;
+  lo=pos+edgeSpacing+marginLower;
+  hi=lo+documentSize-marginUpper-marginLower;
+  if(options&RULER_VERTICAL){
+    wlo=border+padleft;
+    whi=width-padright;
+    if(x<wlo+MARKERLENGTH){
+      }
+    else if(x>whi-MARKERLENGTH){
+      if(lo+indentLower-MARKERLENGTH<y && y<lo+indentLower+MARKERLENGTH) return MOUSE_PARA_LOWER;
+      if(hi-indentUpper-MARKERLENGTH<y && y<hi-indentUpper+MARKERLENGTH) return MOUSE_PARA_UPPER;
+      }
+    else if(options&RULER_MARGIN_ADJUST){
+      if(lo-FUDGE<y && y<lo+FUDGE) return MOUSE_MARG_LOWER;
+      if(hi-FUDGE<y && y<hi+FUDGE) return MOUSE_MARG_UPPER;
+      }
+    }
+  else{
+    wlo=border+padtop;
+    whi=height-padbottom;
+    if(y<wlo+MARKERLENGTH){
+      if(lo+indentFirst-MARKERLENGTH<x && x<lo+indentFirst+MARKERLENGTH) return MOUSE_PARA_FIRST;
+      }
+    else if(y>whi-MARKERLENGTH){
+      if(lo+indentLower-MARKERLENGTH<x && x<lo+indentLower+MARKERLENGTH) return MOUSE_PARA_LOWER;
+      if(hi-indentUpper-MARKERLENGTH<x && x<hi-indentUpper+MARKERLENGTH) return MOUSE_PARA_UPPER;
+      }
+    else if(options&RULER_MARGIN_ADJUST){
+      if(lo-FUDGE<x && x<lo+FUDGE) return MOUSE_MARG_LOWER;
+      if(hi-FUDGE<x && x<hi+FUDGE) return MOUSE_MARG_UPPER;
+      }
+    }
+  return MOUSE_NONE;
+  }
+
+
 // Moving
-long FXRuler::onMotion(FXObject*,FXSelector,void*){
-  if(isEnabled()){
-/*
-    if(options&RULER_HORIZONTAL){
-      setDefaultCursor(getApp()->getDefaultCursor(DEF_DRAGH_CURSOR));
-      }
-    else{
-      setDefaultCursor(getApp()->getDefaultCursor(DEF_DRAGV_CURSOR));
-      }
-    setDefaultCursor(getApp()->getDefaultCursor(DEF_ARROW_CURSOR));
-*/
-    return 1;
+long FXRuler::onMotion(FXObject*,FXSelector,void*ptr){
+  register FXEvent* event=(FXEvent*)ptr;
+  FXint value=(options&RULER_VERTICAL)?(event->win_y+off):(event->win_x+off);
+  switch(mode){
+    case MOUSE_NONE:
+      if(picked(event->win_x,event->win_y)){
+        if(options&RULER_VERTICAL){
+          setDefaultCursor(getApp()->getDefaultCursor(DEF_DRAGH_CURSOR));
+          }
+        else{
+          setDefaultCursor(getApp()->getDefaultCursor(DEF_DRAGV_CURSOR));
+          }
+        }
+      else{
+        setDefaultCursor(getApp()->getDefaultCursor(DEF_ARROW_CURSOR));
+        }
+      return 0;
+    case MOUSE_MARG_LOWER:
+      setMarginLower(value-pos-edgeSpacing,TRUE);
+      return 1;
+    case MOUSE_MARG_UPPER:
+      setMarginUpper(pos+edgeSpacing+documentSize-value,TRUE);
+      return 1;
+    case MOUSE_PARA_FIRST:
+      setIndentFirst(value-pos-edgeSpacing-marginLower,TRUE);
+      return 1;
+    case MOUSE_PARA_LOWER:
+      setIndentLower(value-pos-edgeSpacing-marginLower,TRUE);
+      return 1;
+    case MOUSE_PARA_UPPER:
+      setIndentUpper(pos+edgeSpacing+documentSize-marginUpper-value,TRUE);
+      return 1;
     }
   return 0;
   }
@@ -693,29 +973,21 @@ long FXRuler::onMotion(FXObject*,FXSelector,void*){
 
 // Change arrow location
 void FXRuler::setValue(FXint val){
-  FXint doct,docb,docr,docl;
+  val=FXCLAMP(0,val,documentSize);
   if(options&RULER_VERTICAL){
-    doct=shift+docSpace;
-    docb=doct+docSpace+docSize+docSpace;
-    if(val<doct) val=doct;
-    if(val>docb) val=docb;
     if(arrowPos!=val){
       if(options&RULER_ARROW){
-        update(padleft+border,arrowPos-ARROWLENGTH,width-padleft-padright-(border<<1),ARROWBASE);
-        update(padleft+border,val-ARROWLENGTH,width-padleft-padright-(border<<1),ARROWBASE);
+        update(padleft+border,getDocumentLower()+arrowPos-ARROWLENGTH,width-padleft-padright-(border<<1),ARROWBASE);
+        update(padleft+border,getDocumentLower()+val-ARROWLENGTH,width-padleft-padright-(border<<1),ARROWBASE);
         }
       arrowPos=val;
       }
     }
   else{
-    docl=shift+docSpace;
-    docr=docl+docSpace+docSize+docSpace;
-    if(val<docl) val=docl;
-    if(val>docr) val=docr;
     if(arrowPos!=val){
       if(options&RULER_ARROW){
-        update(arrowPos-ARROWLENGTH,padtop+border,ARROWBASE,height-padtop-padbottom-(border<<1));
-        update(val-ARROWLENGTH,padtop+border,ARROWBASE,height-padtop-padbottom-(border<<1));
+        update(getDocumentLower()+arrowPos-ARROWLENGTH,padtop+border,ARROWBASE,height-padtop-padbottom-(border<<1));
+        update(getDocumentLower()+val-ARROWLENGTH,padtop+border,ARROWBASE,height-padtop-padbottom-(border<<1));
         }
       arrowPos=val;
       }
@@ -772,19 +1044,10 @@ long FXRuler::onCmdGetTip(FXObject*,FXSelector,void* ptr){
   }
 
 
-// We were asked about status text
-long FXRuler::onQueryHelp(FXObject* sender,FXSelector,void*){
-  if(!help.empty() && (flags&FLAG_HELP)){
-    sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&help);
-    return 1;
-    }
-  return 0;
-  }
-
-
 // We were asked about tip text
-long FXRuler::onQueryTip(FXObject* sender,FXSelector,void*){
-  if(!tip.empty() && (flags&FLAG_TIP)){
+long FXRuler::onQueryTip(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXFrame::onQueryTip(sender,sel,ptr)) return 1;
+  if((flags&FLAG_TIP) && !tip.empty()){
     sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&tip);
     return 1;
     }
@@ -792,13 +1055,200 @@ long FXRuler::onQueryTip(FXObject* sender,FXSelector,void*){
   }
 
 
+// We were asked about status text
+long FXRuler::onQueryHelp(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXFrame::onQueryHelp(sender,sel,ptr)) return 1;
+  if((flags&FLAG_HELP) && !help.empty()){
+    sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&help);
+    return 1;
+    }
+  return 0;
+  }
+
+
+// Change content size
+void FXRuler::setContentSize(FXint size,FXbool notify){
+  setDocumentSize(size-edgeSpacing-edgeSpacing,notify);
+  }
+
+
+// Get content size
+FXint FXRuler::getContentSize() const {
+  return edgeSpacing+documentSize+edgeSpacing;
+  }
+
+
+// Set position, scrolling contents
+void FXRuler::setPosition(FXint p,FXbool notify){
+  if(pos!=p){
+    if(options&RULER_VERTICAL)
+      scroll(0,0,width,height,0,p-pos);
+    else
+      scroll(0,0,width,height,p-pos,0);
+    arrowPos+=p-pos;
+    pos=p;
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change document size
+void FXRuler::setDocumentSize(FXint size,FXbool notify){
+  if(size<0) size=0;
+  if(documentSize!=size){
+    documentSize=size;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change/return document edge spacing
+void FXRuler::setEdgeSpacing(FXint space,FXbool notify){
+  if(space<0) space=0;
+  if(edgeSpacing!=space){
+    edgeSpacing=space;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change/return lower document margin
+void FXRuler::setMarginLower(FXint mgn,FXbool notify){
+  if(mgn<0) mgn=0;
+  if(mgn>=documentSize-marginUpper) mgn=documentSize-marginUpper-1;
+  if(marginLower!=mgn){
+    marginLower=mgn;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change/return upper document margin
+void FXRuler::setMarginUpper(FXint mgn,FXbool notify){
+  if(mgn<0) mgn=0;
+  if(mgn>=documentSize-marginLower) mgn=documentSize-marginLower-1;
+  if(marginUpper!=mgn){
+    marginUpper=mgn;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change/return first line indent
+void FXRuler::setIndentFirst(FXint ind,FXbool notify){
+  if(ind<-marginLower) ind=-marginLower;
+  if(ind>documentSize-marginLower) ind=documentSize-marginLower;
+  if(indentFirst!=ind){
+    indentFirst=ind;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change/return lower indent
+void FXRuler::setIndentLower(FXint ind,FXbool notify){
+  if(ind<-marginLower) ind=-marginLower;
+  if(ind>documentSize-marginLower) ind=documentSize-marginLower;
+  if(indentLower!=ind){
+    indentLower=ind;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change/return upper indent
+void FXRuler::setIndentUpper(FXint ind,FXbool notify){
+  if(ind<-marginUpper) ind=-marginUpper;
+  if(ind>documentSize-marginLower) ind=documentSize-marginLower;
+  if(indentUpper!=ind){
+    indentUpper=ind;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change/return document number placement
+void FXRuler::setNumberTicks(FXint ticks,FXbool notify){
+  if(ticks<1){ fxerror("%s::setNumberTicks: illegal tick spacing.\n",getClassName()); }
+  if(numberTicks!=ticks){
+    numberTicks=ticks;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change/return document major ticks
+void FXRuler::setMajorTicks(FXint ticks,FXbool notify){
+  if(ticks<1){ fxerror("%s::setMajorTicks: illegal tick spacing.\n",getClassName()); }
+  if(majorTicks!=ticks){
+    majorTicks=ticks;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change/return document medium ticks
+void FXRuler::setMediumTicks(FXint ticks,FXbool notify){
+  if(ticks<1){ fxerror("%s::setMediumTicks: illegal tick spacing.\n",getClassName()); }
+  if(mediumTicks!=ticks){
+    mediumTicks=ticks;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change/return document tiny ticks
+void FXRuler::setTinyTicks(FXint ticks,FXbool notify){
+  if(ticks<1){ fxerror("%s::setTinyTicks: illegal tick spacing.\n",getClassName()); }
+  if(tinyTicks!=ticks){
+    tinyTicks=ticks;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
+// Change/return pixel per tick spacing
+void FXRuler::setPixelPerTick(FXdouble space,FXbool notify){
+  if(space<=0.0){ fxerror("%s::setPixelPerTick: illegal pixel per tick value.\n",getClassName()); }
+  if(pixelPerTick!=space){
+    pixelPerTick=space;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
+  }
+
+
 // Change the font
-void FXRuler::setFont(FXFont *fnt){
+void FXRuler::setFont(FXFont *fnt,FXbool notify){
   if(!fnt){ fxerror("%s::setFont: NULL font specified.\n",getClassName()); }
   if(font!=fnt){
     font=fnt;
     recalc();
     update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
     }
   }
 
@@ -829,15 +1279,21 @@ FXuint FXRuler::getRulerStyle() const {
   }
 
 
-// Change help text
-void FXRuler::setHelpText(const FXString& text){
-  help=text;
+// Set ruler alignment
+void FXRuler::setRulerAlignment(FXuint alignment,FXbool notify){
+  FXuint opts=(options&~RULER_ALIGN_MASK) | (alignment&RULER_ALIGN_MASK);
+  if(options!=opts){
+    options=opts;
+    recalc();
+    update();
+    if(notify && target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),NULL);
+    }
   }
 
 
-// Change tip text
-void FXRuler::setTipText(const FXString& text){
-  tip=text;
+// Get ruler alignment
+FXuint FXRuler::getRulerAlignment() const {
+  return (options&RULER_ALIGN_MASK);
   }
 
 
@@ -845,6 +1301,18 @@ void FXRuler::setTipText(const FXString& text){
 void FXRuler::save(FXStream& store) const {
   FXFrame::save(store);
   store << font;
+  store << documentSize;
+  store << edgeSpacing;
+  store << marginLower;
+  store << marginUpper;
+  store << indentFirst;
+  store << indentLower;
+  store << indentUpper;
+  store << pixelPerTick;
+  store << numberTicks;
+  store << majorTicks;
+  store << mediumTicks;
+  store << tinyTicks;
   store << textColor;
   store << tip;
   store << help;
@@ -855,6 +1323,18 @@ void FXRuler::save(FXStream& store) const {
 void FXRuler::load(FXStream& store){
   FXFrame::load(store);
   store >> font;
+  store >> documentSize;
+  store >> edgeSpacing;
+  store >> marginLower;
+  store >> marginUpper;
+  store >> indentFirst;
+  store >> indentLower;
+  store >> indentUpper;
+  store >> pixelPerTick;
+  store >> numberTicks;
+  store >> majorTicks;
+  store >> mediumTicks;
+  store >> tinyTicks;
   store >> textColor;
   store >> tip;
   store >> help;

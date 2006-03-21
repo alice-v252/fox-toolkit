@@ -3,7 +3,7 @@
 *                      J P E G    I n p u t / O u t p u t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2000,2004 by David Tyree.   All Rights Reserved.                *
+* Copyright (C) 2000,2006 by David Tyree.   All Rights Reserved.                *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,13 +19,15 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: fxjpegio.cpp,v 1.42 2004/04/08 16:24:48 fox Exp $                        *
+* $Id: fxjpegio.cpp,v 1.53 2006/01/22 17:58:53 fox Exp $                        *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
 #include "FXStream.h"
 #ifdef HAVE_JPEG_H
+#undef FAR
 extern "C" {
 /* Theo Veenker <Theo.Veenker@let.uu.nl> says this is needed for CYGWIN */
 #if (defined(__CYGWIN__) || defined(__MINGW32__) || defined(_MSC_VER)) && !defined(XMD_H)
@@ -70,8 +72,9 @@ using namespace FX;
 namespace FX {
 
 
-extern FXAPI FXbool fxloadJPG(FXStream& store,FXColor*& data,FXint& width,FXint& height,FXint& quality);
-extern FXAPI FXbool fxsaveJPG(FXStream& store,const FXColor* data,FXint width,FXint height,FXint quality);
+extern FXAPI bool fxcheckJPG(FXStream& store);
+extern FXAPI bool fxloadJPG(FXStream& store,FXColor*& data,FXint& width,FXint& height,FXint& quality);
+extern FXAPI bool fxsaveJPG(FXStream& store,const FXColor* data,FXint width,FXint height,FXint quality);
 
 
 #ifdef HAVE_JPEG_H
@@ -157,9 +160,18 @@ static void term_source(j_decompress_ptr){
   }
 
 
+// Check if stream contains a JPG
+bool fxcheckJPG(FXStream& store){
+  FXuchar signature[2];
+  store.load(signature,2);
+  store.position(-2,FXFromCurrent);
+  return signature[0]==0xFF && signature[1]==0xD8;
+  }
+
+
 
 // Load a JPEG image
-FXbool fxloadJPG(FXStream& store,FXColor*& data,FXint& width,FXint& height,FXint&){
+bool fxloadJPG(FXStream& store,FXColor*& data,FXint& width,FXint& height,FXint&){
   jpeg_decompress_struct srcinfo;
   FOX_jpeg_error_mgr jerr;
   FOX_jpeg_source_mgr src;
@@ -177,6 +189,7 @@ FXbool fxloadJPG(FXStream& store,FXColor*& data,FXint& width,FXint& height,FXint
   buffer[0]=NULL;
 
   // initialize the jpeg data structure;
+  memset(&srcinfo,0,sizeof(srcinfo));
   jpeg_create_decompress(&srcinfo);
 
   // setup the error handler
@@ -215,7 +228,7 @@ FXbool fxloadJPG(FXStream& store,FXColor*& data,FXint& width,FXint& height,FXint
   // Data to receive
   if(!FXMALLOC(&data,FXColor,srcinfo.image_height*srcinfo.image_width)){
     jpeg_destroy_decompress(&srcinfo);
-    return FALSE;
+    return false;
     }
 
   height=srcinfo.image_height;
@@ -225,7 +238,7 @@ FXbool fxloadJPG(FXStream& store,FXColor*& data,FXint& width,FXint& height,FXint
   if(!FXMALLOC(&buffer[0],JSAMPLE,row_stride)){
     FXFREE(&data);
     jpeg_destroy_decompress(&srcinfo);
-    return FALSE;
+    return false;
     }
 
   // Read the jpeg data
@@ -245,7 +258,7 @@ FXbool fxloadJPG(FXStream& store,FXColor*& data,FXint& width,FXint& height,FXint
   jpeg_finish_decompress(&srcinfo);
   jpeg_destroy_decompress(&srcinfo);
   FXFREE(&buffer[0]);
-  return TRUE;
+  return true;
   }
 
 
@@ -278,7 +291,7 @@ static void term_destination(j_compress_ptr cinfo){
 
 
 // Save a JPEG image
-FXbool fxsaveJPG(FXStream& store,const FXColor* data,FXint width,FXint height,FXint quality){
+bool fxsaveJPG(FXStream& store,const FXColor* data,FXint width,FXint height,FXint quality){
   jpeg_compress_struct dstinfo;
   FOX_jpeg_error_mgr jerr;
   FOX_jpeg_dest_mgr dst;
@@ -287,12 +300,13 @@ FXbool fxsaveJPG(FXStream& store,const FXColor* data,FXint width,FXint height,FX
   register JSAMPLE *qq;
 
   // Must make sense
-  if(!data || width<=0 || height<=0 || quality<=0 || 100<quality) return FALSE;
+  if(!data || width<=0 || height<=0 || quality<=0 || 100<quality) return false;
 
   // Row buffer
-  if(!FXMALLOC(&buffer,JSAMPLE,width*3)) return FALSE;
+  if(!FXMALLOC(&buffer,JSAMPLE,width*3)) return false;
 
   // Specify the error manager
+  memset(&dstinfo,0,sizeof(dstinfo));
   dstinfo.err=jpeg_std_error(&jerr.error_mgr);
   jerr.error_mgr.error_exit=fatal_error;
 
@@ -300,7 +314,7 @@ FXbool fxsaveJPG(FXStream& store,const FXColor* data,FXint width,FXint height,FX
   if(setjmp(jerr.jmpbuf)){
     FXFREE(&buffer[0]);
     jpeg_destroy_compress(&dstinfo);
-    return FALSE;
+    return false;
     }
 
   // initialize the structure
@@ -341,7 +355,7 @@ FXbool fxsaveJPG(FXStream& store,const FXColor* data,FXint width,FXint height,FX
   jpeg_finish_compress(&dstinfo);
   jpeg_destroy_compress(&dstinfo);
   FXFREE(&buffer[0]);
-  return TRUE;
+  return true;
   }
 
 
@@ -351,8 +365,14 @@ FXbool fxsaveJPG(FXStream& store,const FXColor* data,FXint width,FXint height,FX
 #else
 
 
+// Check if stream contains a JPG
+bool fxcheckJPG(FXStream&){
+  return false;
+  }
+
+
 // Stub routine
-FXbool fxloadJPG(FXStream&,FXColor*& data,FXint& width,FXint& height,FXint& quality){
+bool fxloadJPG(FXStream&,FXColor*& data,FXint& width,FXint& height,FXint& quality){
   static const FXuchar jpeg_bits[] = {
    0xff, 0xff, 0xff, 0xff, 0x01, 0x00, 0x00, 0x80, 0xfd, 0xff, 0xff, 0xbf,
    0x05, 0x00, 0x00, 0xa0, 0x05, 0x00, 0x00, 0xa0, 0x05, 0x00, 0x00, 0xa0,
@@ -372,13 +392,14 @@ FXbool fxloadJPG(FXStream&,FXColor*& data,FXint& width,FXint& height,FXint& qual
     }
   width=32;
   height=32;
-  return TRUE;
+  quality=75;
+  return true;
   }
 
 
 // Stub routine
-FXbool fxsaveJPG(FXStream&,const FXColor*,FXint,FXint,FXint){
-  return FALSE;
+bool fxsaveJPG(FXStream&,const FXColor*,FXint,FXint,FXint){
+  return false;
   }
 
 

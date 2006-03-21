@@ -3,7 +3,7 @@
 *                        C o l o r W h e e l   W i d g e t                      *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2001,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 2001,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXColorWheel.cpp,v 1.32 2004/02/08 17:29:06 fox Exp $                    *
+* $Id: FXColorWheel.cpp,v 1.49 2006/01/22 17:58:20 fox Exp $                    *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -32,7 +34,6 @@
 #include "FXRectangle.h"
 #include "FXSettings.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXDCWindow.h"
 #include "FXImage.h"
@@ -59,8 +60,8 @@ FXDEFMAP(FXColorWheel) FXColorWheelMap[]={
   FXMAPFUNC(SEL_MOUSEWHEEL,0,FXColorWheel::onMouseWheel),
   FXMAPFUNC(SEL_LEFTBUTTONPRESS,0,FXColorWheel::onLeftBtnPress),
   FXMAPFUNC(SEL_LEFTBUTTONRELEASE,0,FXColorWheel::onLeftBtnRelease),
-  FXMAPFUNC(SEL_UPDATE,FXColorWheel::ID_QUERY_TIP,FXColorWheel::onQueryTip),
-  FXMAPFUNC(SEL_UPDATE,FXColorWheel::ID_QUERY_HELP,FXColorWheel::onQueryHelp),
+  FXMAPFUNC(SEL_QUERY_TIP,0,FXColorWheel::onQueryTip),
+  FXMAPFUNC(SEL_QUERY_HELP,0,FXColorWheel::onQueryHelp),
   FXMAPFUNC(SEL_COMMAND,FXColorWheel::ID_SETHELPSTRING,FXColorWheel::onCmdSetHelp),
   FXMAPFUNC(SEL_COMMAND,FXColorWheel::ID_GETHELPSTRING,FXColorWheel::onCmdGetHelp),
   FXMAPFUNC(SEL_COMMAND,FXColorWheel::ID_SETTIPSTRING,FXColorWheel::onCmdSetTip),
@@ -72,20 +73,20 @@ FXDEFMAP(FXColorWheel) FXColorWheelMap[]={
 FXIMPLEMENT(FXColorWheel,FXFrame,FXColorWheelMap,ARRAYNUMBER(FXColorWheelMap))
 
 
-// Init
+// Make a color wheel
 FXColorWheel::FXColorWheel(){
   flags|=FLAG_ENABLED;
   hsv[0]=0.0f;
   hsv[1]=0.0f;
   hsv[2]=1.0f;
-  spotx=0;
-  spoty=0;
   dialx=0;
   dialy=0;
+  spotx=0;
+  spoty=0;
   }
 
 
-// Make a color well
+// Make a color wheel
 FXColorWheel::FXColorWheel(FXComposite* p,FXObject* tgt,FXSelector sel,FXuint opts,FXint x,FXint y,FXint w,FXint h,FXint pl,FXint pr,FXint pt,FXint pb):
   FXFrame(p,opts,x,y,w,h,pl,pr,pt,pb){
   flags|=FLAG_ENABLED;
@@ -95,10 +96,10 @@ FXColorWheel::FXColorWheel(FXComposite* p,FXObject* tgt,FXSelector sel,FXuint op
   hsv[0]=0.0f;
   hsv[1]=0.0f;
   hsv[2]=1.0f;
-  spotx=WHEELDIAMETER/2;
-  spoty=WHEELDIAMETER/2;
   dialx=0;
   dialy=0;
+  spotx=WHEELDIAMETER/2;
+  spoty=WHEELDIAMETER/2;
   }
 
 
@@ -135,13 +136,13 @@ void FXColorWheel::layout(){
   ww=width-padleft-padright-(border<<1);
   hh=height-padtop-padbottom-(border<<1);
   ss=FXMAX(3,FXMIN(ww,hh));
-  if(dial->getWidth()!=ss){
-    dial->resize(ss,ss);
+  dialx=border+padleft+(ww-ss)/2;
+  dialy=border+padtop+(hh-ss)/2;
+  if((dial->getWidth()!=ss) || (flags&FLAG_DIRTY)){
+    if(dial->getWidth()!=ss) dial->resize(ss,ss);
     updatedial();
     dial->render();
     }
-  dialx=border+padleft+(ww-ss)/2;
-  dialy=border+padtop+(hh-ss)/2;
   hstoxy(spotx,spoty,hsv[0],hsv[1]);
   flags&=~FLAG_DIRTY;
   }
@@ -149,26 +150,26 @@ void FXColorWheel::layout(){
 
 // Compute x,y location from hue and saturation
 FXbool FXColorWheel::hstoxy(FXint& x,FXint& y,FXfloat h,FXfloat s) const {
-  register FXdouble r=dial->getWidth()*0.5;
-  register FXdouble a=(h-180.0)*DTOR;
-  x=(FXint)(s*r*cos(a)+r+0.5);
-  y=(FXint)(s*r*sin(a)+r+0.5);
+  register FXfloat r=dial->getWidth()*0.5f;
+  register FXfloat a=(h-180.0f)*DTOR;
+  x=(FXint)(s*r*cosf(a)+r+0.5f);
+  y=(FXint)(s*r*sinf(a)+r+0.5f);
   return TRUE;
   }
 
 
 // Compute hue and saturation from x,y, return FALSE if outside of dial
 FXbool FXColorWheel::xytohs(FXfloat& h,FXfloat& s,FXint x,FXint y) const {
-  register FXdouble r=dial->getWidth()*0.5;
-  register FXdouble rx=x-r;
-  register FXdouble ry=y-r;
-  register FXdouble v=sqrt(rx*rx+ry*ry);
+  register FXfloat r=dial->getWidth()*0.5f;
+  register FXfloat rx=x-r;
+  register FXfloat ry=y-r;
+  register FXfloat v=sqrtf(rx*rx+ry*ry);
   h=0.0f;
   s=0.0f;
-  if(0.0<v){
-    h=(FXfloat)(atan2(ry,rx)*RTOD+180.0);
+  if(0.0f<v){
+    h=atan2f(ry,rx)*RTOD+180.0f;
     if(v<r){
-      s=(FXfloat)(v/r);
+      s=v/r;
       return TRUE;
       }
     s=1.0f;
@@ -233,20 +234,22 @@ long FXColorWheel::onCmdGetTip(FXObject*,FXSelector,void* ptr){
   }
 
 
-// We were asked about status text
-long FXColorWheel::onQueryHelp(FXObject* sender,FXSelector,void*){
-  if(!help.empty() && (flags&FLAG_HELP)){
-    sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&help);
+// We were asked about tip text
+long FXColorWheel::onQueryTip(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXWindow::onQueryTip(sender,sel,ptr)) return 1;
+  if((flags&FLAG_TIP) && !tip.empty()){
+    sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&tip);
     return 1;
     }
   return 0;
   }
 
 
-// We were asked about tip text
-long FXColorWheel::onQueryTip(FXObject* sender,FXSelector,void*){
-  if(!tip.empty() && (flags&FLAG_TIP)){
-    sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&tip);
+// We were asked about status text
+long FXColorWheel::onQueryHelp(FXObject* sender,FXSelector sel,void* ptr){
+  if(FXWindow::onQueryHelp(sender,sel,ptr)) return 1;
+  if((flags&FLAG_HELP) && !help.empty()){
+    sender->handle(this,FXSEL(SEL_COMMAND,ID_SETSTRINGVALUE),(void*)&help);
     return 1;
     }
   return 0;
@@ -289,8 +292,8 @@ long FXColorWheel::onMotion(FXObject*,FXSelector,void* ptr){
   flags&=~FLAG_TIP;
   if(flags&FLAG_PRESSED){
     movespot(event->win_x-dialx,event->win_y-dialy);
-    if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)hsv);
     flags|=FLAG_CHANGED;
+    if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)hsv);
     return 1;
     }
   return 0;
@@ -303,12 +306,12 @@ long FXColorWheel::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
   flags&=~FLAG_TIP;
   if(isEnabled()){
     grab();
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
     movespot(event->win_x-dialx,event->win_y-dialy);
-    if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)hsv);
     flags|=FLAG_CHANGED;
     flags&=~FLAG_UPDATE;
     flags|=FLAG_PRESSED;
+    if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)hsv);
     }
   return 1;
   }
@@ -316,16 +319,14 @@ long FXColorWheel::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
 
 // End spot movement mode
 long FXColorWheel::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
-  FXuint flgs=flags;
+  FXuint changed=(flags&FLAG_CHANGED);
   if(isEnabled()){
     ungrab();
     flags|=FLAG_UPDATE;
     flags&=~FLAG_PRESSED;
     flags&=~FLAG_CHANGED;
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
-    if(flgs&FLAG_CHANGED){
-      if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)hsv);
-      }
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
+    if(changed && target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)hsv);
     return 1;
     }
   return 1;
@@ -336,9 +337,9 @@ long FXColorWheel::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
 long FXColorWheel::onMouseWheel(FXObject*,FXSelector,void* ptr){
   FXfloat amount=((FXEvent*)ptr)->code/12.0f;
   if(isEnabled()){
-    if(((FXEvent*)ptr)->state&CONTROLMASK) amount/=10.0f;
+    if(((FXEvent*)ptr)->state&CONTROLMASK) amount*=0.1f;
     setHue(fmodf(hsv[0]+amount+360.0f,360.0f));
-    if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)hsv);
+    if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)hsv);
     return 1;
     }
   return 0;
@@ -374,22 +375,37 @@ void FXColorWheel::setVal(FXfloat v){
   v=FXCLAMP(0.0f,v,1.0f);
   if(v!=hsv[2]){
     hsv[2]=v;
-    updatedial();
-    dial->render();
-    update(dialx,dialy,dial->getWidth(),dial->getHeight());
+    recalc();
     }
   }
 
 
-// Change help text
-void FXColorWheel::setHelpText(const FXString& text){
-  help=text;
-  }
+// Set hue, saturation, value
+void FXColorWheel::setHueSatVal(FXfloat h,FXfloat s,FXfloat v){
 
+  // Clamp
+  h=FXCLAMP(0.0f,h,360.0f);
+  s=FXCLAMP(0.0f,s,1.0f);
+  v=FXCLAMP(0.0f,v,1.0f);
 
-// Change tip text
-void FXColorWheel::setTipText(const FXString& text){
-  tip=text;
+  // Changed after clamping?
+  if(hsv[0]!=h || hsv[1]!=s || hsv[2]!=v){
+
+    // Cheap case: just move the ball
+    if(hsv[0]!=h || hsv[1]!=s){
+      hsv[0]=h;
+      hsv[1]=s;
+      update(dialx+spotx-4,dialy+spoty-4,9,9);
+      hstoxy(spotx,spoty,hsv[0],hsv[1]);
+      update(dialx+spotx-4,dialy+spoty-4,9,9);
+      }
+
+    // Expensive case: recalculate dial
+    if(hsv[2]!=v){
+      hsv[2]=v;
+      recalc();
+      }
+    }
   }
 
 

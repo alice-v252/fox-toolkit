@@ -3,7 +3,7 @@
 *                            V i s u a l   C l a s s                            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXVisual.cpp,v 1.64 2004/02/18 16:37:50 fox Exp $                        *
+* $Id: FXVisual.cpp,v 1.79 2006/01/22 17:58:51 fox Exp $                        *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
-#include "fxpriv.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -33,7 +34,6 @@
 #include "FXRegistry.h"
 #include "FXAccelTable.h"
 #include "FXObjectList.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXVisual.h"
 
@@ -122,14 +122,12 @@ FXVisual::FXVisual(){
   maxcolors=1000000;
   type=VISUALTYPE_UNKNOWN;
   info=NULL;
+  visual=NULL;
   colormap=0;
   freemap=FALSE;
 #ifndef WIN32
-  visual=NULL;
   gc=0;
   scrollgc=0;
-#else
-  pixelformat=0;
 #endif
   }
 
@@ -147,14 +145,13 @@ FXVisual::FXVisual(FXApp* a,FXuint flgs,FXuint d):FXId(a){
   maxcolors=1000000;
   type=VISUALTYPE_UNKNOWN;
   info=NULL;
+  visual=NULL;
   colormap=0;
   freemap=FALSE;
 #ifndef WIN32
   visual=NULL;
   gc=0;
   scrollgc=0;
-#else
-  pixelformat=0;
 #endif
   }
 
@@ -257,7 +254,7 @@ void FXVisual::setupdirectcolor(){
   register FXuint  redshift,greenshift,blueshift;
   register FXPixel redmask,greenmask,bluemask;
   register FXPixel redmax,greenmax,bluemax;
-  register FXuint  mapsize,maxcols,i,j,r,g,b,emax,rr,gg,bb,rm,gm,bm,em,d;
+  register FXuint  mapsize,maxcols,i,j,r,g,b,emax,rr,gg,bb,d;
   register FXuint  bestmatchr,bestmatchg,bestmatchb;
   register FXdouble mindist,dist,gamma;
   register FXbool gottable,allocedcolor;
@@ -280,11 +277,6 @@ void FXVisual::setupdirectcolor(){
   redmax=redmask>>redshift;
   greenmax=greenmask>>greenshift;
   bluemax=bluemask>>blueshift;
-
-  rm=redmax;
-  gm=greenmax;
-  bm=bluemax;
-  em=FXMAX3(rm,gm,bm);
 
   // Maximum number of colors to allocate
   maxcols=FXMIN(maxcolors,mapsize);
@@ -545,7 +537,7 @@ void FXVisual::setupstaticcolor(){
   register FXuint mapsize,bestmatch,i,nr,ng,nb,r,g,b,j,d;
   register FXdouble mindist,dist,gamma,dr,dg,db;
   register FXPixel redmax,greenmax,bluemax;
-  FXbool rc[256],gc[256],bc[256];
+  FXbool rcnt[256],gcnt[256],bcnt[256];
   XColor table[256],color;
 
   // Get gamma
@@ -558,17 +550,17 @@ void FXVisual::setupstaticcolor(){
   XQueryColors(DISPLAY(getApp()),colormap,table,mapsize);
 
   // How many shades of r,g,b do we have?
-  for(i=0; i<256; i++){ rc[i]=gc[i]=bc[i]=0; }
+  for(i=0; i<256; i++){ rcnt[i]=gcnt[i]=bcnt[i]=0; }
   for(i=0; i<mapsize; i++){
-    rc[table[i].red/257]=1;
-    gc[table[i].green/257]=1;
-    bc[table[i].blue/257]=1;
+    rcnt[table[i].red/257]=1;
+    gcnt[table[i].green/257]=1;
+    bcnt[table[i].blue/257]=1;
     }
   nr=ng=nb=0;
   for(i=0; i<256; i++){
-    if(rc[i]) nr++;
-    if(gc[i]) ng++;
-    if(bc[i]) nb++;
+    if(rcnt[i]) nr++;
+    if(gcnt[i]) ng++;
+    if(bcnt[i]) nb++;
     }
   FXTRACE((200,"nr=%3d ng=%3d nb=%3d\n",nr,ng,nb));
 
@@ -818,6 +810,7 @@ void FXVisual::setuppixmapmono(){
   }
 
 
+/*
 // Try determine standard colormap
 static FXbool getstdcolormap(Display *dpy,VisualID visualid,XStandardColormap& map){
   XStandardColormap *stdmaps=NULL;
@@ -845,6 +838,7 @@ static FXbool getstdcolormap(Display *dpy,VisualID visualid,XStandardColormap& m
   if(stdmaps) XFree(stdmaps);
   return status;
   }
+*/
 
 
 // Determine colormap, then initialize it
@@ -877,6 +871,31 @@ void FXVisual::setupcolormap(){
     }
   }
 
+
+// Make GC for given visual and depth; graphics exposures optional
+void* FXVisual::setupgc(FXbool gex){
+  XGCValues gval;
+  FXID drawable;
+  GC gg;
+
+  gval.fill_style=FillSolid;
+  gval.graphics_exposures=gex;
+
+  // For default visual; this is easy as we already have a matching window
+  if((Visual*)visual==DefaultVisual(DISPLAY(getApp()),DefaultScreen(DISPLAY(getApp())))){
+    gg=XCreateGC(DISPLAY(getApp()),XDefaultRootWindow(DISPLAY(getApp())),GCFillStyle|GCGraphicsExposures,&gval);
+    }
+
+  // For arbitrary visual; create a temporary pixmap of the same depth as the visual
+  else{
+    drawable=XCreatePixmap(DISPLAY(getApp()),XDefaultRootWindow(DISPLAY(getApp())),1,1,depth);
+    gg=XCreateGC(DISPLAY(getApp()),drawable,GCFillStyle|GCGraphicsExposures,&gval);
+    XFreePixmap(DISPLAY(getApp()),drawable);
+    }
+  return gg;
+  }
+
+
 #else
 
 /*******************************************************************************/
@@ -906,7 +925,7 @@ static inline FXuint findnbits(DWORD n){
 
 
 // Make palette
-static HPALETTE createAllPurposePalette(HDC hdc){
+static HPALETTE createAllPurposePalette(){
   LOGPALETTE256 palette;
   HPALETTE hPalette,hStockPalette;
   FXint num,r,g,b;
@@ -1054,8 +1073,8 @@ void FXVisual::create(){
       setupcolormap();
 
       // Make GC's for this visual
-      gc=fxmakegc(DISPLAY(getApp()),(Visual*)visual,depth,FALSE);
-      scrollgc=fxmakegc(DISPLAY(getApp()),(Visual*)visual,depth,TRUE);
+      gc=setupgc(FALSE);
+      scrollgc=setupgc(TRUE);
 
       xid=1;
 #else
@@ -1070,7 +1089,7 @@ void FXVisual::create(){
 
       // Check for palette mode; assume 8-bit for now
       if(GetDeviceCaps(hdc,RASTERCAPS)&RC_PALETTE){
-        colormap=createAllPurposePalette(hdc);     // FIXME how about 4-bit VGA mode?
+        colormap=createAllPurposePalette();
         depth=8;
         numred=6;               // We have a 6x6x6 ramp, at least...
         numgreen=6;
@@ -1184,7 +1203,7 @@ FXColor FXVisual::getColor(FXPixel pix){
   XColor color;
   color.pixel=pix;
   XQueryColor(DISPLAY(getApp()),colormap,&color);
-  return FXRGB((color.red>>8),(color.green>>8),(color.blue>>8));
+  return FXRGB(((color.red+128)/257),((color.green+128)/257),((color.blue+128)/257));
 #else
   return PALETTEINDEX(pix);
 #endif

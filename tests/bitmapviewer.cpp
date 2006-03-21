@@ -3,9 +3,9 @@
 *                    B i t m a p   V i e w e r   D e m o                        *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2000,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 2000,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
-* $Id: bitmapviewer.cpp,v 1.6 2004/03/04 02:38:56 fox Exp $                     *
+* $Id: bitmapviewer.cpp,v 1.19 2006/01/22 17:58:58 fox Exp $                    *
 ********************************************************************************/
 #include "fx.h"
 #include <stdio.h>
@@ -335,16 +335,16 @@ BitmapWindow::BitmapWindow(FXApp* a):FXMainWindow(a,"FOX Image Viewer: - untitle
   FXMenuSeparator* sep1=new FXMenuSeparator(filemenu);
   sep1->setTarget(&mrufiles);
   sep1->setSelector(FXRecentFiles::ID_ANYFILES);
-  new FXMenuCommand(filemenu,NULL,NULL,&mrufiles,FXRecentFiles::ID_FILE_1);
-  new FXMenuCommand(filemenu,NULL,NULL,&mrufiles,FXRecentFiles::ID_FILE_2);
-  new FXMenuCommand(filemenu,NULL,NULL,&mrufiles,FXRecentFiles::ID_FILE_3);
-  new FXMenuCommand(filemenu,NULL,NULL,&mrufiles,FXRecentFiles::ID_FILE_4);
-  new FXMenuCommand(filemenu,NULL,NULL,&mrufiles,FXRecentFiles::ID_FILE_5);
-  new FXMenuCommand(filemenu,NULL,NULL,&mrufiles,FXRecentFiles::ID_FILE_6);
-  new FXMenuCommand(filemenu,NULL,NULL,&mrufiles,FXRecentFiles::ID_FILE_7);
-  new FXMenuCommand(filemenu,NULL,NULL,&mrufiles,FXRecentFiles::ID_FILE_8);
-  new FXMenuCommand(filemenu,NULL,NULL,&mrufiles,FXRecentFiles::ID_FILE_9);
-  new FXMenuCommand(filemenu,NULL,NULL,&mrufiles,FXRecentFiles::ID_FILE_10);
+  new FXMenuCommand(filemenu,FXString::null,NULL,&mrufiles,FXRecentFiles::ID_FILE_1);
+  new FXMenuCommand(filemenu,FXString::null,NULL,&mrufiles,FXRecentFiles::ID_FILE_2);
+  new FXMenuCommand(filemenu,FXString::null,NULL,&mrufiles,FXRecentFiles::ID_FILE_3);
+  new FXMenuCommand(filemenu,FXString::null,NULL,&mrufiles,FXRecentFiles::ID_FILE_4);
+  new FXMenuCommand(filemenu,FXString::null,NULL,&mrufiles,FXRecentFiles::ID_FILE_5);
+  new FXMenuCommand(filemenu,FXString::null,NULL,&mrufiles,FXRecentFiles::ID_FILE_6);
+  new FXMenuCommand(filemenu,FXString::null,NULL,&mrufiles,FXRecentFiles::ID_FILE_7);
+  new FXMenuCommand(filemenu,FXString::null,NULL,&mrufiles,FXRecentFiles::ID_FILE_8);
+  new FXMenuCommand(filemenu,FXString::null,NULL,&mrufiles,FXRecentFiles::ID_FILE_9);
+  new FXMenuCommand(filemenu,FXString::null,NULL,&mrufiles,FXRecentFiles::ID_FILE_10);
   new FXMenuCommand(filemenu,"&Clear Recent Files",NULL,&mrufiles,FXRecentFiles::ID_CLEAR);
   FXMenuSeparator* sep2=new FXMenuSeparator(filemenu);
   sep2->setTarget(&mrufiles);
@@ -378,7 +378,7 @@ BitmapWindow::BitmapWindow(FXApp* a):FXMainWindow(a,"FOX Image Viewer: - untitle
   new FXMenuCommand(viewmenu,"Rows of icons\t\tView row-wise.",NULL,filelist,FXFileList::ID_ARRANGE_BY_ROWS);
   new FXMenuCommand(viewmenu,"Columns of icons\t\tView column-wise.",NULL,filelist,FXFileList::ID_ARRANGE_BY_COLUMNS);
   new FXMenuCommand(viewmenu,"Toolbar\t\tDisplay toolbar.",NULL,toolbar,FXWindow::ID_TOGGLESHOWN);
-  new FXMenuCommand(viewmenu,"Float toolbar\t\tUndock the toolbar.",NULL,toolbar,FXToolBar::ID_UNDOCK);
+  new FXMenuCommand(viewmenu,"Float toolbar\t\tUndock the toolbar.",NULL,toolbar,FXToolBar::ID_DOCK_FLOAT);
   new FXMenuCommand(viewmenu,"Dock toolbar top\t\tDock the toolbar on the top.",NULL,toolbar,FXToolBar::ID_DOCK_TOP);
   new FXMenuCommand(viewmenu,"Dock toolbar left\t\tDock the toolbar on the left.",NULL,toolbar,FXToolBar::ID_DOCK_LEFT);
   new FXMenuCommand(viewmenu,"Dock toolbar right\t\tDock the toolbar on the right.",NULL,toolbar,FXToolBar::ID_DOCK_RIGHT);
@@ -432,12 +432,15 @@ FXbool BitmapWindow::loadimage(const FXString& file){
   FXBitmap *img=NULL;
   FXBitmap *old;
   TIFF *tif;
-  tdata_t buf;
   FXint width,height,size,scanline,i;
   FXshort spp, bps, order;
-  FXuchar *data;
+  FXuchar *data,*pa;
 
   tif=TIFFOpen(file.text(),"r");
+  if(tif==NULL){
+    FXMessageBox::error(this,MBOX_OK,"Error Loading Bitmap","Not a tiff file");
+    return FALSE;
+    }
   TIFFGetFieldDefaulted(tif,TIFFTAG_IMAGELENGTH,&height);
   TIFFGetFieldDefaulted(tif,TIFFTAG_IMAGEWIDTH,&width);
   TIFFGetFieldDefaulted(tif,TIFFTAG_BITSPERSAMPLE,&bps);
@@ -452,7 +455,7 @@ FXbool BitmapWindow::loadimage(const FXString& file){
   scanline=TIFFScanlineSize(tif);
   size=height*scanline;
   FXMALLOC(&data,FXuchar,size);
-  FXuchar *pa=data;
+  pa=data;
   for(i=0; i<height; i++){
     TIFFReadScanline(tif,pa,i,0);
     pa+=scanline;
@@ -461,12 +464,12 @@ FXbool BitmapWindow::loadimage(const FXString& file){
     data[i]=FXBITREVERSE(data[i]);
     }
   TIFFClose(tif);
-  
-  img=new FXBitmap(getApp(),data,BITMAP_KEEP|BITMAP_SHMI|BITMAP_SHMP|BITMAP_OWNED,width,height);
+
+  img=new FXBitmap(getApp(),data,BITMAP_KEEP|BITMAP_OWNED,width,height);
 
   // Perhaps failed
   if(img==NULL){
-    FXMessageBox::error(this,MBOX_OK,"Error Loading Bitmap","Unsupported type: %s",FXFile::extension(file).text());
+    FXMessageBox::error(this,MBOX_OK,"Error Loading Bitmap","Unsupported type: %s",FXPath::extension(file).text());
     return FALSE;
     }
 
@@ -481,36 +484,39 @@ FXbool BitmapWindow::loadimage(const FXString& file){
 
 // Save file
 FXbool BitmapWindow::saveimage(const FXString& file){
+  bitmapview->getBitmap()->restore();
 #ifdef HAVE_TIFF_H
   FXBitmap *img;
+  FXint width,height,size,scanline,i;
+  FXuchar *data,*pa;
   TIFF *tif;
 
   img=bitmapview->getBitmap();
-  tif = TIFFOpen(file.text(),"w");
-  TIFFSetField(tif,TIFFTAG_IMAGELENGTH,img->getHeight());
-  TIFFSetField(tif,TIFFTAG_IMAGEWIDTH,img->getWidth());
+  width=img->getWidth();
+  height=img->getHeight();
+  scanline=(width+7)>>3;
+  size=height*scanline;
+
+  FXMALLOC(&data,FXuchar,size);
+  memcpy(data,img->getData(),size);
+  for(i=0; i<size; i++){
+    data[i]=FXBITREVERSE(data[i]);
+    }
+
+  tif=TIFFOpen(file.text(),"w");
+  TIFFSetField(tif,TIFFTAG_IMAGELENGTH,height);
+  TIFFSetField(tif,TIFFTAG_IMAGEWIDTH,width);
   TIFFSetField(tif,TIFFTAG_BITSPERSAMPLE,1);
   TIFFSetField(tif,TIFFTAG_SAMPLESPERPIXEL,1);
   TIFFSetField(tif,TIFFTAG_PLANARCONFIG,1);
 
-  FXuchar *data;
-  int nbytes = ((img->getWidth()+7)>>3);
-  data=img->getData();
-  for(int i=0;i<img->getHeight();i++) {
-    TIFFWriteScanline(tif,(tdata_t)data,i,0);
-    data+=nbytes;
+  pa=data;
+  for(i=0; i<height; i++) {
+    TIFFWriteScanline(tif,(tdata_t)pa,i,0);
+    pa+=scanline;
     }
   TIFFClose(tif);
-  /*
-  FXFileStream stream;
-  if(stream.open(file,FXStreamSave)){
-    getApp()->beginWaitCursor();
-    img=bitmapview->getBitmap();///// We may want to save in another format...
-    img->savePixels(stream);
-    stream.close();
-    getApp()->endWaitCursor();
-    }
-  */
+  FXFREE(&data);
 #endif
   return TRUE;
   }
@@ -536,7 +542,7 @@ long BitmapWindow::onCmdSave(FXObject*,FXSelector,void*){
   FXFileDialog savedialog(this,"Save Image");
   savedialog.setFilename(filename);
   if(savedialog.execute()){
-    if(FXFile::exists(savedialog.getFilename())){
+    if(FXStat::exists(savedialog.getFilename())){
       if(MBOX_CLICKED_NO==FXMessageBox::question(this,MBOX_YES_NO,"Overwrite Image","Overwrite existing image?")) return 1;
       }
     filename=savedialog.getFilename();
@@ -696,8 +702,8 @@ long BitmapWindow::onCmdCrop(FXObject*,FXSelector,void*){
   new FXButton(frame,"Cancel",NULL,&croppanel,FXDialogBox::ID_CANCEL,LAYOUT_CENTER_Y|FRAME_RAISED|FRAME_THICK,0,0,0,0, 20,20,4,4);
   new FXButton(frame,"OK",NULL,&croppanel,FXDialogBox::ID_ACCEPT,LAYOUT_CENTER_Y|FRAME_RAISED|FRAME_THICK,0,0,0,0, 30,30,4,4);
   if(!croppanel.execute()) return 1;
-  if(cx<0 || cy<0 || cx+cw>image->getWidth() || cy+ch>image->getHeight()) return 1;
-  image->crop(cx,cy,cw,ch);
+  if(cx+cw<=0 || cy+ch<=0 || cx>=image->getWidth() || cy>=image->getHeight()) return 1;
+  image->crop(cx,cy,cw,ch,1);
   bitmapview->setBitmap(image);
   return 1;
   }

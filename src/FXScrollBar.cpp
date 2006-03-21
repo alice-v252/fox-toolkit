@@ -3,7 +3,7 @@
 *                         S c r o l l b a r   O b j e c t s                     *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,19 +19,20 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXScrollBar.cpp,v 1.16 2004/02/08 17:29:07 fox Exp $                     *
+* $Id: FXScrollBar.cpp,v 1.27 2006/01/22 17:58:41 fox Exp $                     *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
-#include "fxkeys.h"
 #include "fxdefs.h"
+#include "fxkeys.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
 #include "FXRectangle.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXDCWindow.h"
 #include "FXScrollBar.h"
@@ -47,8 +48,6 @@
 */
 
 
-#define THUMB_MINIMUM   8
-#define BAR_SIZE        15
 #define SCROLLBAR_MASK  (SCROLLBAR_HORIZONTAL|SCROLLBAR_WHEELJUMP)
 
 using namespace FX;
@@ -86,8 +85,9 @@ FXIMPLEMENT(FXScrollBar,FXWindow,FXScrollBarMap,ARRAYNUMBER(FXScrollBarMap))
 // For deserialization
 FXScrollBar::FXScrollBar(){
   flags|=FLAG_ENABLED|FLAG_SHOWN;
-  thumbpos=BAR_SIZE;
-  thumbsize=THUMB_MINIMUM;
+  barsize=15;
+  thumbsize=8;
+  thumbpos=15;
   dragpoint=0;
   mode=MODE_NONE;
   }
@@ -102,8 +102,9 @@ FXScrollBar::FXScrollBar(FXComposite* p,FXObject* tgt,FXSelector sel,FXuint opts
   shadowColor=getApp()->getShadowColor();
   borderColor=getApp()->getBorderColor();
   arrowColor=getApp()->getForeColor();
-  thumbpos=BAR_SIZE;
-  thumbsize=THUMB_MINIMUM;
+  barsize=getApp()->getScrollBarSize();
+  thumbpos=barsize;
+  thumbsize=barsize>>1;
   target=tgt;
   message=sel;
   dragpoint=0;
@@ -117,12 +118,12 @@ FXScrollBar::FXScrollBar(FXComposite* p,FXObject* tgt,FXSelector sel,FXuint opts
 
 // Get default size
 FXint FXScrollBar::getDefaultWidth(){
-  return (options&SCROLLBAR_HORIZONTAL) ? BAR_SIZE+BAR_SIZE+THUMB_MINIMUM : BAR_SIZE;
+  return (options&SCROLLBAR_HORIZONTAL) ? barsize+barsize+(barsize>>1) : barsize;
   }
 
 
 FXint FXScrollBar::getDefaultHeight(){
-  return (options&SCROLLBAR_HORIZONTAL) ? BAR_SIZE : BAR_SIZE+BAR_SIZE+THUMB_MINIMUM;
+  return (options&SCROLLBAR_HORIZONTAL) ? barsize : barsize+barsize+(barsize>>1);
   }
 
 
@@ -179,7 +180,7 @@ long FXScrollBar::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
     grab();
     getApp()->removeTimeout(this,ID_TIMEWHEEL);
     getApp()->removeTimeout(this,ID_AUTOSCROLL);
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONPRESS,message),ptr)) return 1;
     flags&=~FLAG_UPDATE;
     if(options&SCROLLBAR_HORIZONTAL){     // Horizontal scrollbar
       if(event->win_x<height){                   // Left arrow
@@ -247,8 +248,8 @@ long FXScrollBar::onLeftBtnPress(FXObject*,FXSelector,void* ptr){
     if(p>(range-page)) p=range-page;
     if(p!=pos){
       setPosition(p);
-      if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
       flags|=FLAG_CHANGED;
+      if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
       }
     return 1;
     }
@@ -269,9 +270,9 @@ long FXScrollBar::onLeftBtnRelease(FXObject*,FXSelector,void* ptr){
     update();
     getApp()->removeTimeout(this,ID_TIMEWHEEL);
     getApp()->removeTimeout(this,ID_AUTOSCROLL);
-    if(target && target->handle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_LEFTBUTTONRELEASE,message),ptr)) return 1;
     if(flgs&FLAG_CHANGED){
-      if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
       }
     return 1;
     }
@@ -288,7 +289,7 @@ long FXScrollBar::onMiddleBtnPress(FXObject*,FXSelector,void* ptr){
     grab();
     getApp()->removeTimeout(this,ID_TIMEWHEEL);
     getApp()->removeTimeout(this,ID_AUTOSCROLL);
-    if(target && target->handle(this,FXSEL(SEL_MIDDLEBUTTONPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_MIDDLEBUTTONPRESS,message),ptr)) return 1;
     mode=MODE_DRAG;
     flags&=~FLAG_UPDATE;
     dragpoint=thumbsize/2;
@@ -320,8 +321,8 @@ long FXScrollBar::onMiddleBtnPress(FXObject*,FXSelector,void* ptr){
     if(p>(range-page)) p=range-page;
     if(pos!=p){
       pos=p;
-      if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
       flags|=FLAG_CHANGED;
+      if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
       }
     return 1;
     }
@@ -342,9 +343,9 @@ long FXScrollBar::onMiddleBtnRelease(FXObject*,FXSelector,void* ptr){
     update();
     getApp()->removeTimeout(this,ID_TIMEWHEEL);
     getApp()->removeTimeout(this,ID_AUTOSCROLL);
-    if(target && target->handle(this,FXSEL(SEL_MIDDLEBUTTONRELEASE,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_MIDDLEBUTTONRELEASE,message),ptr)) return 1;
     if(flgs&FLAG_CHANGED){
-      if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
       }
     return 1;
     }
@@ -360,7 +361,7 @@ long FXScrollBar::onRightBtnPress(FXObject*,FXSelector,void* ptr){
     grab();
     getApp()->removeTimeout(this,ID_TIMEWHEEL);
     getApp()->removeTimeout(this,ID_AUTOSCROLL);
-    if(target && target->handle(this,FXSEL(SEL_RIGHTBUTTONPRESS,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_RIGHTBUTTONPRESS,message),ptr)) return 1;
     flags&=~FLAG_UPDATE;
     if(options&SCROLLBAR_HORIZONTAL){     // Horizontal scrollbar
       if(event->win_x<height){                   // Left arrow
@@ -426,8 +427,8 @@ long FXScrollBar::onRightBtnPress(FXObject*,FXSelector,void* ptr){
     if(p>(range-page)) p=range-page;
     if(p!=pos){
       setPosition(p);
-      if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
       flags|=FLAG_CHANGED;
+      if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
       }
     return 1;
     }
@@ -448,9 +449,9 @@ long FXScrollBar::onRightBtnRelease(FXObject*,FXSelector,void* ptr){
     update();
     getApp()->removeTimeout(this,ID_TIMEWHEEL);
     getApp()->removeTimeout(this,ID_AUTOSCROLL);
-    if(target && target->handle(this,FXSEL(SEL_RIGHTBUTTONRELEASE,message),ptr)) return 1;
+    if(target && target->tryHandle(this,FXSEL(SEL_RIGHTBUTTONRELEASE,message),ptr)) return 1;
     if(flgs&FLAG_CHANGED){
-      if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
       }
     return 1;
     }
@@ -547,8 +548,8 @@ long FXScrollBar::onMotion(FXObject*,FXSelector,void* ptr){
     if(p>(range-page)) p=range-page;
     if(pos!=p){
       pos=p;
-      if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
       flags|=FLAG_CHANGED;
+      if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
       return 1;
       }
     }
@@ -574,14 +575,17 @@ long FXScrollBar::onMouseWheel(FXObject*,FXSelector,void* ptr){
       if(dragpoint!=pos){
         if(options&SCROLLBAR_WHEELJUMP){
           setPosition(dragpoint);
-          if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
           dragpoint=0;
+          if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
           }
         else{
           dragjump=(dragpoint-pos);
           if(FXABS(dragjump)>16) dragjump/=16;
           getApp()->addTimeout(this,ID_TIMEWHEEL,5,(void*)(FXival)dragjump);
           }
+        }
+      else{
+        dragpoint=0;
         }
       return 1;
       }
@@ -596,26 +600,29 @@ long FXScrollBar::onTimeWheel(FXObject*,FXSelector,void* ptr){
   if(dragpoint<pos){
     if(p<=dragpoint){
       setPosition(dragpoint);
-      if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
       dragpoint=0;
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
       }
     else{
       setPosition(p);
-      if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
       getApp()->addTimeout(this,ID_TIMEWHEEL,5,ptr);
+      if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
+      }
+    }
+  else if(dragpoint>pos){
+    if(p>=dragpoint){
+      setPosition(dragpoint);
+      dragpoint=0;
+      if(target) target->tryHandle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
+      }
+    else{
+      setPosition(p);
+      getApp()->addTimeout(this,ID_TIMEWHEEL,5,ptr);
+      if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
       }
     }
   else{
-    if(p>=dragpoint){
-      setPosition(dragpoint);
-      if(target) target->handle(this,FXSEL(SEL_COMMAND,message),(void*)(FXival)pos);
-      dragpoint=0;
-      }
-    else{
-      setPosition(p);
-      if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
-      getApp()->addTimeout(this,ID_TIMEWHEEL,5,ptr);
-      }
+    dragpoint=0;
     }
   return 1;
   }
@@ -635,8 +642,8 @@ long FXScrollBar::onAutoScroll(FXObject*,FXSelector,void* ptr){
     }
   if(p!=pos){
     setPosition(p);
-    if(target) target->handle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
     flags|=FLAG_CHANGED;
+    if(target) target->tryHandle(this,FXSEL(SEL_CHANGED,message),(void*)(FXival)pos);
     return 1;
     }
   return 0;
@@ -883,7 +890,7 @@ void FXScrollBar::setPosition(FXint p){
   if(options&SCROLLBAR_HORIZONTAL){
     total=width-height-height;
     thumbsize=(total*page)/range;
-    if(thumbsize<THUMB_MINIMUM) thumbsize=THUMB_MINIMUM;
+    if(thumbsize<(barsize>>1)) thumbsize=(barsize>>1);
     travel=total-thumbsize;
     if(range>page){ thumbpos=height+(FXint)((((FXdouble)pos)*travel)/(range-page)); } else { thumbpos=height; }
     l=thumbpos;
@@ -895,7 +902,7 @@ void FXScrollBar::setPosition(FXint p){
   else{
     total=height-width-width;
     thumbsize=(total*page)/range;
-    if(thumbsize<THUMB_MINIMUM) thumbsize=THUMB_MINIMUM;
+    if(thumbsize<(barsize>>1)) thumbsize=(barsize>>1);
     travel=total-thumbsize;
     if(range>page){ thumbpos=width+(FXint)((((FXdouble)pos)*travel)/(range-page)); } else { thumbpos=width; }
     l=thumbpos;
@@ -944,13 +951,13 @@ void FXScrollBar::setArrowColor(FXColor clr){
 
 
 // Change the scrollbar style
-FXuint FXScrollBar::getScrollbarStyle() const {
+FXuint FXScrollBar::getScrollBarStyle() const {
   return (options&SCROLLBAR_MASK);
   }
 
 
 // Get the current scrollbar style
-void FXScrollBar::setScrollbarStyle(FXuint style){
+void FXScrollBar::setScrollBarStyle(FXuint style){
   FXuint opts=(options&~SCROLLBAR_MASK) | (style&SCROLLBAR_MASK);
   if(options!=opts){
     options=opts;
@@ -960,9 +967,19 @@ void FXScrollBar::setScrollbarStyle(FXuint style){
   }
 
 
+// Change the bar size
+void FXScrollBar::setBarSize(FXint size){
+  if(barsize!=size){
+    barsize=size;
+    recalc();
+    }
+  }
+
+
 // Save object to stream
 void FXScrollBar::save(FXStream& store) const {
   FXWindow::save(store);
+  store << barsize;
   store << hiliteColor;
   store << shadowColor;
   store << borderColor;
@@ -977,6 +994,7 @@ void FXScrollBar::save(FXStream& store) const {
 // Load object from stream
 void FXScrollBar::load(FXStream& store){
   FXWindow::load(store);
+  store >> barsize;
   store >> hiliteColor;
   store >> shadowColor;
   store >> borderColor;

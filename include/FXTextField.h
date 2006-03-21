@@ -3,7 +3,7 @@
 *                         T e x t   F i e l d   W i d g e t                     *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXTextField.h,v 1.51 2004/02/08 17:17:34 fox Exp $                       *
+* $Id: FXTextField.h,v 1.62 2006/01/22 17:58:11 fox Exp $                       *
 ********************************************************************************/
 #ifndef FXTEXTFIELD_H
 #define FXTEXTFIELD_H
@@ -59,24 +59,27 @@ enum {
 * During text entry, the text field sends a SEL_CHANGED message to its target,
 * with the message data set to the current text value of type const FXchar*.
 * When the text is accepted by hitting ENTER, the SEL_COMMAND message is sent.
+* The text field also sends SEL_COMMAND when the focus moves to another control.
+* TEXTFIELD_ENTER_ONLY can be passed to suppress this feature. Typically, this
+* flag is used in dialogs that close when ENTER is hit in a text field.
 */
 class FXAPI FXTextField : public FXFrame {
   FXDECLARE(FXTextField)
 protected:
-  FXString      contents;               // Edited text
-  const FXchar *delimiters;             // Set of delimiters
-  FXFont       *font;                   // Text font
-  FXColor       textColor;              // Text color
-  FXColor       selbackColor;           // Selected background color
-  FXColor       seltextColor;           // Selected text color
-  FXColor       cursorColor;            // Color of the Cursor
-  FXint         cursor;                 // Cursor position
-  FXint         anchor;                 // Anchor position
-  FXint         columns;                // Number of columns visible
-  FXint         shift;                  // Shift amount
-  FXString      clipped;                // Clipped text
-  FXString      help;                   // Help string
-  FXString      tip;                    // Tooltip
+  FXString      contents;       // Edited text
+  const FXchar *delimiters;     // Set of delimiters
+  FXFont       *font;           // Text font
+  FXColor       textColor;      // Text color
+  FXColor       selbackColor;   // Selected background color
+  FXColor       seltextColor;   // Selected text color
+  FXColor       cursorColor;    // Color of the Cursor
+  FXint         cursor;         // Cursor position
+  FXint         anchor;         // Anchor position
+  FXint         columns;        // Number of columns visible
+  FXint         shift;          // Shift amount
+  FXString      clipped;        // Clipped text
+  FXString      help;           // Help string
+  FXString      tip;            // Tooltip
 protected:
   FXTextField();
   FXint index(FXint x) const;
@@ -136,6 +139,7 @@ public:
   long onCmdCutSel(FXObject*,FXSelector,void*);
   long onCmdCopySel(FXObject*,FXSelector,void*);
   long onCmdPasteSel(FXObject*,FXSelector,void*);
+  long onCmdPasteMiddle(FXObject*,FXSelector,void*);
   long onCmdDeleteSel(FXObject*,FXSelector,void*);
   long onCmdDeleteAll(FXObject*,FXSelector,void*);
   long onCmdOverstString(FXObject*,FXSelector,void*);
@@ -177,6 +181,7 @@ public:
     ID_CUT_SEL,
     ID_COPY_SEL,
     ID_PASTE_SEL,
+    ID_PASTE_MIDDLE,
     ID_DELETE_SEL,
     ID_DELETE_ALL,
     ID_OVERST_STRING,
@@ -213,7 +218,7 @@ public:
   virtual FXint getDefaultHeight();
 
   /// Yes, text field may receive focus
-  virtual FXbool canFocus() const;
+  virtual bool canFocus() const;
 
   /// Move the focus to this window
   virtual void setFocus();
@@ -221,11 +226,17 @@ public:
   /// Remove the focus from this window
   virtual void killFocus();
 
+  /// Set editable mode
+  void setEditable(FXbool edit=TRUE);
+
   /// Return TRUE if text field may be edited
   FXbool isEditable() const;
 
-  /// Change text field editability
-  void setEditable(FXbool edit=TRUE);
+  /// Set overstrike mode
+  void setOverstrike(FXbool over=TRUE);
+
+  /// Return TRUE if overstrike mode in effect
+  FXbool isOverstrike() const;
 
   /// Set cursor position
   void setCursorPos(FXint pos);
@@ -239,8 +250,8 @@ public:
   /// Return anchor position
   FXint getAnchorPos() const { return anchor; }
 
-  /// Set the text for this label
-  void setText(const FXString& text);
+  /// Change the text and move cursor to end
+  void setText(const FXString& text,FXbool notify=FALSE);
 
   /// Get the text for this label
   FXString getText() const { return contents; }
@@ -275,13 +286,22 @@ public:
   /// Return the cursor color
   FXColor getCursorColor() const { return cursorColor; }
 
-  /// Change width of text field in terms of number of columns * `m'
+  /**
+  * Change the default width of the text field in terms of a number
+  * of columns times the width of the numeral '8'.
+  */
   void setNumColumns(FXint cols);
 
   /// Return number of columns
   FXint getNumColumns() const { return columns; }
 
-  /// Change text justification mode
+  /**
+  * Change text justification mode. The justify mode is a combination of
+  * horizontal justification (JUSTIFY_LEFT, JUSTIFY_RIGHT, or JUSTIFY_CENTER_X),
+  * and vertical justification (JUSTIFY_TOP, JUSTIFY_BOTTOM, JUSTIFY_CENTER_Y).
+  * Note that JUSTIFY_CENTER_X can not be set from the constructor since by
+  * default text fields are left-justified.
+  */
   void setJustify(FXuint mode);
 
   /// Return text justification mode
@@ -294,16 +314,16 @@ public:
   const FXchar* getDelimiters() const { return delimiters; }
 
   /// Set the status line help text for this label
-  void setHelpText(const FXString& text);
+  void setHelpText(const FXString& text){ help=text; }
 
   /// Get the status line help text for this label
-  FXString getHelpText() const { return help; }
+  const FXString& getHelpText() const { return help; }
 
   /// Set the tool tip message for this text field
-  void setTipText(const FXString& text);
+  void setTipText(const FXString& text){ tip=text; }
 
   /// Get the tool tip message for this text field
-  FXString getTipText() const { return tip; }
+  const FXString& getTipText() const { return tip; }
 
   /// Change text style
   void setTextStyle(FXuint style);

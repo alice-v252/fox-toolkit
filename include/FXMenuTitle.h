@@ -3,7 +3,7 @@
 *                      M e n u   T i t l e   W i d g e t                        *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXMenuTitle.h,v 1.18 2004/02/08 17:17:34 fox Exp $                       *
+* $Id: FXMenuTitle.h,v 1.22 2006/01/22 17:58:06 fox Exp $                       *
 ********************************************************************************/
 #ifndef FXMENUTITLE_H
 #define FXMENUTITLE_H
@@ -81,7 +81,7 @@ public:
   virtual FXint getDefaultHeight();
 
   /// Yes it can receive the focus
-  virtual FXbool canFocus() const;
+  virtual bool canFocus() const;
 
   /// Move the focus to this window
   virtual void setFocus();
@@ -90,13 +90,13 @@ public:
   virtual void killFocus();
 
   /// Set popup menu to pop up
-  void setMenu(FXPopup *menu){ pane=menu; }
+  void setMenu(FXPopup *menu);
 
   /// Return popup menu
   FXPopup* getMenu() const { return pane; }
 
   /// True if this menu or is popup logically contains the mouse
-  virtual FXbool contains(FXint parentx,FXint parenty) const;
+  virtual bool contains(FXint parentx,FXint parenty) const;
 
   /// Save menu to a stream
   virtual void save(FXStream& store) const;

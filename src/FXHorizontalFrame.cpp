@@ -3,7 +3,7 @@
 *              H o r i z o n t a l   C o n t a i n e r   O b j e c t            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,18 +19,19 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXHorizontalFrame.cpp,v 1.19 2004/02/08 17:29:06 fox Exp $               *
+* $Id: FXHorizontalFrame.cpp,v 1.28 2006/01/22 17:58:31 fox Exp $               *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
 #include "FXPoint.h"
 #include "FXRectangle.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXHorizontalFrame.h"
 
@@ -69,10 +70,10 @@ FXHorizontalFrame::FXHorizontalFrame(FXComposite* p,FXuint opts,FXint x,FXint y,
 
 // Compute minimum width based on child layout hints
 FXint FXHorizontalFrame::getDefaultWidth(){
-  register FXint w,wcum,wmax,numc,mw=0;
+  register FXint w,wcum,wmax,mw;
   register FXWindow* child;
   register FXuint hints;
-  wcum=wmax=numc=0;
+  wcum=wmax=mw=0;
   if(options&PACK_UNIFORM_WIDTH) mw=maxChildWidth();
   for(child=getFirst(); child; child=child->getNext()){
     if(child->shown()){
@@ -82,25 +83,25 @@ FXint FXHorizontalFrame::getDefaultWidth(){
       else w=child->getDefaultWidth();
       if((hints&LAYOUT_RIGHT)&&(hints&LAYOUT_CENTER_X)){        // LAYOUT_FIX_X
         w=child->getX()+w;
+        if(w>wmax) wmax=w;
         }
       else{
-        wcum+=w; numc++;
+        if(wcum) wcum+=hspacing;
+        wcum+=w;
         }
-      if(wmax<w) wmax=w;
       }
     }
-  if(numc>1) wcum+=(numc-1)*hspacing;
-  if(wmax<wcum) wmax=wcum;
-  return padleft+padright+wmax+(border<<1);
+  wcum+=padleft+padright+(border<<1);
+  return FXMAX(wcum,wmax);
   }
 
 
 // Compute minimum height based on child layout hints
 FXint FXHorizontalFrame::getDefaultHeight(){
-  register FXint h,hmax,mh=0;
+  register FXint h,hmax,hcum,mh;
   register FXWindow* child;
   register FXuint hints;
-  hmax=0;
+  hmax=hcum=mh=0;
   if(options&PACK_UNIFORM_HEIGHT) mh=maxChildHeight();
   for(child=getFirst(); child; child=child->getNext()){
     if(child->shown()){
@@ -110,26 +111,28 @@ FXint FXHorizontalFrame::getDefaultHeight(){
       else h=child->getDefaultHeight();
       if((hints&LAYOUT_BOTTOM)&&(hints&LAYOUT_CENTER_Y)){       // LAYOUT_FIX_Y
         h=child->getY()+h;
+        if(h>hmax) hmax=h;
         }
-      if(hmax<h) hmax=h;
+      else{
+        if(h>hcum) hcum=h;
+        }
       }
     }
-  return padtop+padbottom+hmax+(border<<1);
+  hcum+=padtop+padbottom+(border<<1);
+  return FXMAX(hcum,hmax);
   }
 
 
 // Recalculate layout
 void FXHorizontalFrame::layout(){
-  FXint left,right,top,bottom;
-  FXint mw=0,mh=0;
-  FXint remain,extra_space,total_space,t;
-  FXint x,y,w,h;
-  FXint numc=0;
-  FXint sumexpand=0;
-  FXint numexpand=0;
-  FXint e=0;
-  FXuint hints;
-  FXWindow* child;
+  register FXint left,right,top,bottom,remain,extra_space,total_space,t,x,y,w,h;
+  register FXWindow* child;
+  register FXint sumexpand=0;
+  register FXint numexpand=0;
+  register FXint mw=0;
+  register FXint mh=0;
+  register FXint e=0;
+  register FXuint hints;
 
   // Placement rectangle; right/bottom non-inclusive
   left=border+padleft;
@@ -158,13 +161,13 @@ void FXHorizontalFrame::layout(){
         else{
           remain-=w;
           }
-        numc++;
+        remain-=hspacing;
         }
       }
     }
 
-  // Child spacing
-  if(numc>1) remain-=hspacing*(numc-1);
+  // Child spacing correction
+  remain+=hspacing;
 
   // Do the layout
   for(child=getFirst(); child; child=child->getNext()){
@@ -226,7 +229,7 @@ void FXHorizontalFrame::layout(){
           x=right-w-extra_space;
           right=right-w-hspacing-total_space;
           }
-        else{/*hints&LAYOUT_LEFT*/
+        else{
           x=left+extra_space;
           left=left+w+hspacing+total_space;
           }

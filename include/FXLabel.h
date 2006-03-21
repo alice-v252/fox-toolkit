@@ -3,7 +3,7 @@
 *                            L a b e l   W i d g e t                            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXLabel.h,v 1.26 2004/04/22 20:51:04 fox Exp $                           *
+* $Id: FXLabel.h,v 1.31 2006/03/01 02:13:21 fox Exp $                           *
 ********************************************************************************/
 #ifndef FXLABEL_H
 #define FXLABEL_H
@@ -59,19 +59,22 @@ class FXFont;
 /**
 * A label widget can be used to place a text and/or icon for
 * explanation purposes.  The text label may have an optional tooltip
-* and/or help string.
+* and/or help string.  Icon and label are placed relative to the widget
+* using the justfication options, and relative to each other as determined
+* by the icon relationship options.  A large number of arrangements is
+* possible.
 */
 class FXAPI FXLabel : public FXFrame {
   FXDECLARE(FXLabel)
 protected:
-  FXString label;
-  FXIcon*  icon;
-  FXFont*  font;
-  FXHotKey hotkey;
-  FXint    hotoff;
-  FXColor  textColor;
-  FXString tip;
-  FXString help;
+  FXString label;       // Text on the label
+  FXIcon*  icon;        // Icon on the label
+  FXFont*  font;        // Label font
+  FXHotKey hotkey;      // Hotkey
+  FXint    hotoff;      // Offset in string
+  FXColor  textColor;   // Text color
+  FXString tip;         // Tooltip
+  FXString help;        // Help message
 protected:
   FXLabel();
   FXint labelHeight(const FXString& text) const;
@@ -160,13 +163,13 @@ public:
   void setHelpText(const FXString& text){ help=text; }
 
   /// Get the status line help text for this label
-  FXString getHelpText() const { return help; }
+  const FXString& getHelpText() const { return help; }
 
   /// Set the tool tip message for this label
   void setTipText(const FXString& text){ tip=text; }
 
   /// Get the tool tip message for this label
-  FXString getTipText() const { return tip; }
+  const FXString& getTipText() const { return tip; }
 
   /// Save label to a stream
   virtual void save(FXStream& store) const;

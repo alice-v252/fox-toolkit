@@ -3,7 +3,7 @@
 *                         I c o n   L i s t   W i d g e t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXIconList.h,v 1.75 2004/02/17 21:06:02 fox Exp $                        *
+* $Id: FXIconList.h,v 1.95 2006/01/22 17:58:04 fox Exp $                        *
 ********************************************************************************/
 #ifndef FXICONLIST_H
 #define FXICONLIST_H
@@ -65,6 +65,9 @@ protected:
   FXIcon   *miniIcon;
   void     *data;
   FXuint    state;
+private:
+  FXIconItem(const FXIconItem&);
+  FXIconItem& operator=(const FXIconItem&);
 protected:
   FXIconItem():bigIcon(NULL),miniIcon(NULL),data(NULL),state(0){}
   virtual void draw(const FXIconList* list,FXDC& dc,FXint x,FXint y,FXint w,FXint h) const;
@@ -73,48 +76,99 @@ protected:
   virtual void drawBigIcon(const FXIconList* list,FXDC& dc,FXint x,FXint y,FXint w,FXint h) const;
   virtual void drawMiniIcon(const FXIconList* list,FXDC& dc,FXint x,FXint y,FXint w,FXint h) const;
   virtual void drawDetails(const FXIconList* list,FXDC& dc,FXint x,FXint y,FXint w,FXint h) const;
-protected:
+public:
   enum {
-    SELECTED      = 1,
-    FOCUS         = 2,
-    DISABLED      = 4,
-    DRAGGABLE     = 8,
-    BIGICONOWNED  = 16,
-    MINIICONOWNED = 32
+    SELECTED      = 1,  /// Selected
+    FOCUS         = 2,  /// Focus
+    DISABLED      = 4,  /// Disabled
+    DRAGGABLE     = 8,  /// Draggable
+    BIGICONOWNED  = 16, /// Big icon owned by item
+    MINIICONOWNED = 32  /// Mini icon owned by item
     };
 public:
+
+  /// Construct new item with given text, icons, and user-data
   FXIconItem(const FXString& text,FXIcon* bi=NULL,FXIcon* mi=NULL,void* ptr=NULL):label(text),bigIcon(bi),miniIcon(mi),data(ptr),state(0){}
-  virtual void setText(const FXString& txt){ label=txt; }
+
+  /// Change item's text label
+  virtual void setText(const FXString& txt);
+
+  /// Return item's text label
   const FXString& getText() const { return label; }
-  virtual void setBigIcon(FXIcon* icn){ bigIcon=icn; }
+
+  /// Change item's big icon, deleting the old icon if it was owned
+  virtual void setBigIcon(FXIcon* icn,FXbool owned=FALSE);
+
+  /// Return item's big icon
   FXIcon* getBigIcon() const { return bigIcon; }
-  virtual void setMiniIcon(FXIcon* icn){ miniIcon=icn; }
+
+  /// Change item's mini icon, deleting the old icon if it was owned
+  virtual void setMiniIcon(FXIcon* icn,FXbool owned=FALSE);
+
+  /// Return item's mini icon
   FXIcon* getMiniIcon() const { return miniIcon; }
+
+  /// Change item's user data
   void setData(void* ptr){ data=ptr; }
+
+  /// Get item's user data
   void* getData() const { return data; }
+
+  /// Make item draw as focused
   virtual void setFocus(FXbool focus);
+
+  /// Return true if item has focus
   FXbool hasFocus() const { return (state&FOCUS)!=0; }
+
+  /// Select item
   virtual void setSelected(FXbool selected);
+
+  /// Return true if this item is selected
   FXbool isSelected() const { return (state&SELECTED)!=0; }
+
+  /// Enable or disable item
   virtual void setEnabled(FXbool enabled);
+
+  /// Return true if this item is enabled
   FXbool isEnabled() const { return (state&DISABLED)==0; }
+
+  /// Make item draggable
   virtual void setDraggable(FXbool draggable);
+
+  /// Return true if this item is draggable
   FXbool isDraggable() const { return (state&DRAGGABLE)!=0; }
-  virtual void setIconOwned(FXuint owned=(BIGICONOWNED|MINIICONOWNED));
-  FXuint isIconOwned() const { return (state&(BIGICONOWNED|MINIICONOWNED)); }
+
+  /// Return width of item as drawn in list
   virtual FXint getWidth(const FXIconList* list) const;
+
+  /// Return height of item as drawn in list
   virtual FXint getHeight(const FXIconList* list) const;
+
+  /// Create server-side resources
   virtual void create();
+
+  /// Detach server-side resources
   virtual void detach();
+
+  /// Destroy server-side resources
   virtual void destroy();
+
+  /// Save to stream
   virtual void save(FXStream& store) const;
+
+  /// Load from stream
   virtual void load(FXStream& store);
+
+  /// Destroy item and free icons if owned
   virtual ~FXIconItem();
   };
 
 
 /// Icon item collate function
 typedef FXint (*FXIconListSortFunc)(const FXIconItem*,const FXIconItem*);
+
+
+typedef FXObjectListOf<FXIconItem> FXIconItemList;
 
 
 /**
@@ -141,14 +195,14 @@ class FXAPI FXIconList : public FXScrollArea {
   FXDECLARE(FXIconList)
 protected:
   FXHeader          *header;            // Header control
-  FXIconItem       **items;             // Item list
-  FXint              nitems;            // Number of items
+  FXIconItemList     items;		// Item list
   FXint              nrows;             // Number of rows
   FXint              ncols;             // Number of columns
   FXint              anchor;            // Anchor item
   FXint              current;           // Current item
   FXint              extent;            // Extent item
   FXint              cursor;            // Cursor item
+  FXint              viewable;          // Visible item
   FXFont            *font;              // Font
   FXIconListSortFunc sortfunc;          // Item sort function
   FXColor            textColor;         // Text color
@@ -168,12 +222,14 @@ protected:
   FXbool             state;             // State of item
 protected:
   FXIconList();
-  virtual FXIconItem *createItem(const FXString& text,FXIcon *big,FXIcon* mini,void* ptr);
-  virtual void moveContents(FXint x,FXint y);
-  void drawLasso(FXint x0,FXint y0,FXint x1,FXint y1);
   void recompute();
   void getrowscols(FXint& nr,FXint& nc,FXint w,FXint h) const;
+  void drawLasso(FXint x0,FXint y0,FXint x1,FXint y1);
   void lassoChanged(FXint ox,FXint oy,FXint ow,FXint oh,FXint nx,FXint ny,FXint nw,FXint nh,FXbool notify);
+  virtual void moveContents(FXint x,FXint y);
+  virtual FXIconItem *createItem(const FXString& text,FXIcon *big,FXIcon* mini,void* ptr);
+  static FXint compareSection(const FXchar *p,const FXchar* q,FXint s);
+  static FXint compareSectionCase(const FXchar *p,const FXchar* q,FXint s);
 private:
   FXIconList(const FXIconList&);
   FXIconList &operator=(const FXIconList&);
@@ -261,7 +317,7 @@ public:
   virtual FXint getContentHeight();
 
   /// Icon list can receive focus
-  virtual FXbool canFocus() const;
+  virtual bool canFocus() const;
 
   /// Move the focus to this window
   virtual void setFocus();
@@ -279,7 +335,7 @@ public:
   virtual void position(FXint x,FXint y,FXint w,FXint h);
 
   /// Return number of items
-  FXint getNumItems() const { return nitems; }
+  FXint getNumItems() const { return items.no(); }
 
   /// Return number of rows
   FXint getNumRows() const { return nrows; }
@@ -289,6 +345,12 @@ public:
 
   /// Return header control
   FXHeader* getHeader() const { return header; }
+
+  /// Set headers from array of strings
+  void setHeaders(const FXchar** strings,FXint size=1);
+
+  /// Set headers from newline separated strings
+  void setHeaders(const FXString& strings,FXint size=1);
 
   /// Append header with given text and optional icon
   void appendHeader(const FXString& text,FXIcon *icon=NULL,FXint size=1);
@@ -326,6 +388,12 @@ public:
   /// Replace items text, icons, and user-data pointer
   FXint setItem(FXint index,const FXString& text,FXIcon *big=NULL,FXIcon* mini=NULL,void* ptr=NULL,FXbool notify=FALSE);
 
+  /// Fill list by appending items from array of strings
+  FXint fillItems(const FXchar** strings,FXIcon *big=NULL,FXIcon* mini=NULL,void* ptr=NULL,FXbool notify=FALSE);
+
+  /// Fill list by appending items from newline separated strings
+  FXint fillItems(const FXString& strings,FXIcon *big=NULL,FXIcon* mini=NULL,void* ptr=NULL,FXbool notify=FALSE);
+
   /// Insert a new [possibly subclassed] item at the give index
   FXint insertItem(FXint index,FXIconItem* item,FXbool notify=FALSE);
 
@@ -347,6 +415,9 @@ public:
   /// Move item from oldindex to newindex
   FXint moveItem(FXint newindex,FXint oldindex,FXbool notify=FALSE);
 
+  /// Extract item from list
+  FXIconItem* extractItem(FXint index,FXbool notify=FALSE);
+
   /// Remove item from list
   void removeItem(FXint index,FXbool notify=FALSE);
 
@@ -360,16 +431,31 @@ public:
   FXint getItemHeight() const { return itemHeight; }
 
   /// Return index of item at x,y, or -1 if none
-  FXint getItemAt(FXint x,FXint y) const;
+  virtual FXint getItemAt(FXint x,FXint y) const;
 
   /**
-  * Search items for item by name, starting from start item; the
-  * flags argument controls the search direction, and case sensitivity.
+  * Search items by name, beginning from item start.  If the start
+  * item is -1 the search will start at the first item in the list.
+  * Flags may be SEARCH_FORWARD or SEARCH_BACKWARD to control the
+  * search direction; this can be combined with SEARCH_NOWRAP or SEARCH_WRAP
+  * to control whether the search wraps at the start or end of the list.
+  * The option SEARCH_IGNORECASE causes a case-insensitive match.  Finally,
+  * passing SEARCH_PREFIX causes searching for a prefix of the item name.
+  * Return -1 if no matching item is found.
   */
   FXint findItem(const FXString& text,FXint start=-1,FXuint flags=SEARCH_FORWARD|SEARCH_WRAP) const;
 
+  /**
+  * Search items by associated user data, beginning from item start. If the
+  * start item is -1 the search will start at the first item in the list.
+  * Flags may be SEARCH_FORWARD or SEARCH_BACKWARD to control the
+  * search direction; this can be combined with SEARCH_NOWRAP or SEARCH_WRAP
+  * to control whether the search wraps at the start or end of the list.
+  */
+  FXint findItemByData(const void *ptr,FXint start=-1,FXuint flags=SEARCH_FORWARD|SEARCH_WRAP) const;
+
   /// Scroll to make item at index visible
-  void makeItemVisible(FXint index);
+  virtual void makeItemVisible(FXint index);
 
   /// Change item text
   void setItemText(FXint index,const FXString& text);
@@ -378,13 +464,13 @@ public:
   FXString getItemText(FXint index) const;
 
   /// Change item big icon
-  void setItemBigIcon(FXint index,FXIcon* icon);
+  void setItemBigIcon(FXint index,FXIcon* icon,FXbool owned=FALSE);
 
   /// Return big icon of item at index
   FXIcon* getItemBigIcon(FXint index) const;
 
   /// Change item mini icon
-  void setItemMiniIcon(FXint index,FXIcon* icon);
+  void setItemMiniIcon(FXint index,FXIcon* icon,FXbool owned=FALSE);
 
   /// Return mini icon of item at index
   FXIcon* getItemMiniIcon(FXint index) const;
@@ -414,10 +500,10 @@ public:
   void updateItem(FXint index) const;
 
   /// Enable item at index
-  FXbool enableItem(FXint index);
+  virtual FXbool enableItem(FXint index);
 
   /// Disable item at index
-  FXbool disableItem(FXint index);
+  virtual FXbool disableItem(FXint index);
 
   /// Select item at index
   virtual FXbool selectItem(FXint index,FXbool notify=FALSE);
@@ -501,7 +587,7 @@ public:
   void setHelpText(const FXString& text);
 
   /// Get the status line help text for this widget
-  FXString getHelpText() const { return help; }
+  const FXString& getHelpText() const { return help; }
 
   /// Save list to a stream
   virtual void save(FXStream& store) const;

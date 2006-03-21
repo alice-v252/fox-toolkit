@@ -5,7 +5,7 @@ AUTOMAKE_OPTIONS = foreign dist-zip
 #AUTOMAKE_OPTIONS = foreign dist-zip no-dependencies
 
 SUBDIRS    = utils include src chart doc tests shutterbug adie pathfinder calculator windows
-EXTRA_DIST = ADDITIONS AUTHORS INSTALL LICENSE LICENSE_ADDENDUM TRACING README fox.lsm index.html fox-config.in aclocal.m4
+EXTRA_DIST = ADDITIONS AUTHORS INSTALL LICENSE LICENSE_ADDENDUM TRACING README fox.lsm index.html aclocal.m4
 
 bin_SCRIPTS = fox-config
 
@@ -19,7 +19,7 @@ snapshot: dist-all
 
 web: distdir
 	cd $(distdir)/doc && doxygen doxygen.cfg
-	cp -r $(distdir)/doc/* /home/html
+	cp -r $(distdir)/doc/* /net/linky/mnt/html
 
 drop: dist-all
 	cp $(distdir).tar.gz /net/linky/mnt/ftp/pub

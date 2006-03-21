@@ -3,7 +3,7 @@
 *                        S p i n   B u t t o n   W i d g e t                    *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2004 by Lyle Johnson.   All Rights Reserved.               *
+* Copyright (C) 1998,2006 by Lyle Johnson.   All Rights Reserved.               *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXSpinner.h,v 1.40 2004/02/08 17:17:34 fox Exp $                         *
+* $Id: FXSpinner.h,v 1.46 2006/02/06 03:03:40 fox Exp $                         *
 ********************************************************************************/
 #ifndef FXSPINNER_H
 #define FXSPINNER_H
@@ -31,13 +31,13 @@
 namespace FX {
 
 
-// Spinner Options
+/// Spinner Options
 enum {
-  SPIN_NORMAL  =  0,                // Normal, non-cyclic
-  SPIN_CYCLIC  =  0x00020000,       // Cyclic spinner
-  SPIN_NOTEXT  =  0x00040000,       // No text visible
-  SPIN_NOMAX   =  0x00080000,       // Spin all the way up to infinity
-  SPIN_NOMIN   =  0x00100000        // Spin all the way down to -infinity
+  SPIN_NORMAL  =  0,                /// Normal, non-cyclic
+  SPIN_CYCLIC  =  0x00020000,       /// Cyclic spinner
+  SPIN_NOTEXT  =  0x00040000,       /// No text visible
+  SPIN_NOMAX   =  0x00080000,       /// Spin all the way up to infinity
+  SPIN_NOMIN   =  0x00100000        /// Spin all the way down to -infinity
   };
 
 
@@ -65,7 +65,6 @@ public:
   long onCmdIncrement(FXObject*,FXSelector,void*);
   long onUpdDecrement(FXObject*,FXSelector,void*);
   long onCmdDecrement(FXObject*,FXSelector,void*);
-  long onUpdEntry(FXObject*,FXSelector,void*);
   long onCmdEntry(FXObject*,FXSelector,void*);
   long onChgEntry(FXObject*,FXSelector,void*);
   long onWheelEntry(FXObject*,FXSelector,void*);
@@ -105,10 +104,16 @@ public:
   virtual FXint getDefaultHeight();
 
   /// Increment spinner
-  void increment();
+  void increment(FXbool notify=FALSE);
+
+  /// Increment spinner by certain amount
+  void incrementByAmount(FXint amount,FXbool notify=FALSE);
 
   /// Decrement spinner
-  void decrement();
+  void decrement(FXbool notify=FALSE);
+
+  /// Decrement spinner by certain amount
+  void decrementByAmount(FXint amount, FXbool notify=FALSE);
 
   /// Return TRUE if in cyclic mode
   FXbool isCyclic() const;
@@ -123,13 +128,13 @@ public:
   void setTextVisible(FXbool shown);
 
   /// Change current value
-  virtual void setValue(FXint value);
+  virtual void setValue(FXint value,FXbool notify=FALSE);
 
   /// Return current value
   FXint getValue() const { return pos; }
 
   /// Change the spinner's range
-  void setRange(FXint lo,FXint hi);
+  void setRange(FXint lo,FXint hi,FXbool notify=FALSE);
 
   /// Get the spinner's current range
   void getRange(FXint& lo,FXint& hi) const { lo=range[0]; hi=range[1]; }
@@ -150,13 +155,13 @@ public:
   void setHelpText(const FXString& text);
 
   /// Get the status line help text for this spinner
-  FXString getHelpText() const;
+  const FXString& getHelpText() const;
 
   /// Set the tool tip message for this spinner
   void setTipText(const FXString& text);
 
   /// Get the tool tip message for this spinner
-  FXString getTipText() const;
+  const FXString& getTipText() const;
 
   /// Change spinner style
   void setSpinnerStyle(FXuint style);

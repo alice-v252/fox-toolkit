@@ -3,7 +3,7 @@
 *                         J P E G   I c o n   O b j e c t                       *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 2000,2004 by David Tyree.   All Rights Reserved.                *
+* Copyright (C) 2000,2006 by David Tyree.   All Rights Reserved.                *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXJPGIcon.cpp,v 1.16 2004/02/08 17:29:06 fox Exp $                       *
+* $Id: FXJPGIcon.cpp,v 1.28 2006/01/24 13:53:11 fox Exp $                       *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXMemoryStream.h"
 #include "FXString.h"
@@ -31,7 +33,6 @@
 #include "FXPoint.h"
 #include "FXRectangle.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXJPGIcon.h"
 
@@ -47,13 +48,28 @@ using namespace FX;
 
 namespace FX {
 
+
+// Suggested file extension
+const FXchar FXJPGIcon::fileExt[]="jpg";
+
+
+// Suggested mime type
+const FXchar FXJPGIcon::mimeType[]="image/jpeg";
+
+
+// Object implementation
 FXIMPLEMENT(FXJPGIcon,FXIcon,NULL,0)
 
 
+#ifdef HAVE_JPEG_H
+const bool FXJPGIcon::supported=true;
+#else
+const bool FXJPGIcon::supported=false;
+#endif
+
+
 // Initialize
-FXJPGIcon::FXJPGIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FXint h):
-  FXIcon(a,NULL,clr,opts,w,h){
-  quality=75;
+FXJPGIcon::FXJPGIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FXint h,FXint q):FXIcon(a,NULL,clr,opts,w,h),quality(q){
   if(pix){
     FXMemoryStream ms;
     ms.open(FXStreamLoad,(FXuchar*)pix);
@@ -64,19 +80,23 @@ FXJPGIcon::FXJPGIcon(FXApp* a,const void *pix,FXColor clr,FXuint opts,FXint w,FX
 
 
 // Save pixels only
-FXbool FXJPGIcon::savePixels(FXStream& store) const {
-  if(!fxsaveJPG(store,data,width,height,quality)) return FALSE;
-  return TRUE;
+bool FXJPGIcon::savePixels(FXStream& store) const {
+  if(fxsaveJPG(store,data,width,height,quality)){
+    return true;
+    }
+  return false;
   }
 
 
 // Load pixels only
-FXbool FXJPGIcon::loadPixels(FXStream& store){
-  if(options&IMAGE_OWNED){ FXFREE(&data); }
-  if(!fxloadJPG(store,data,width,height,quality)) return FALSE;
-  if(options&IMAGE_ALPHAGUESS) transp=guesstransp();
-  options|=IMAGE_OWNED;
-  return TRUE;
+bool FXJPGIcon::loadPixels(FXStream& store){
+  FXColor *pixels; FXint w,h;
+  if(fxloadJPG(store,pixels,w,h,quality)){
+    setData(pixels,IMAGE_OWNED,w,h);
+    if(options&IMAGE_ALPHAGUESS) transp=guesstransp();
+    return true;
+    }
+  return false;
   }
 
 

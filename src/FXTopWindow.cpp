@@ -3,7 +3,7 @@
 *                         T o p   W i n d o w   O b j e c t                     *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1998,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1998,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,12 +19,14 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXTopWindow.cpp,v 1.127.2.1 2004/08/13 05:16:16 fox Exp $                    *
+* $Id: FXTopWindow.cpp,v 1.175 2006/01/22 17:58:48 fox Exp $                    *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
 #include "fxpriv.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -32,7 +34,6 @@
 #include "FXRectangle.h"
 #include "FXRegistry.h"
 #include "FXAccelTable.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXDCWindow.h"
 #include "FXCursor.h"
@@ -44,7 +45,6 @@
 
 /*
   Notes:
-  - Need to trap & forward iconify messages.
   - Handle zero width/height case similar to FXWindow.
   - Pass Size Hints to Window Manager as per ICCCM.
   - Add padding options, as this is convenient for FXDialogBox subclasses;
@@ -53,62 +53,6 @@
   - Now observes LAYOUT_FIX_X and LAYOUT_FIX_Y hints.
   - LAYOUT_FIX_WIDTH and LAYOUT_FIX_HEIGHT take precedence over PACK_UNIFORM_WIDTH and
     PACK_UNIFORM_HEIGHT!
-  - We should use some sort of SizeHints to let the WM know about our desired size.
-
-    David Heath <dave@hipgraphics.com>
-
-      I have something that appears to work under X/Motif, but even there I
-      have not tested it under many window managers. Here is a little
-      code snippet which sets the variables wmLeft, wmRight, wmTop, wmBottom
-      to the border sizes.
-
-            Window w, rw;
-            unsigned int border, depth;
-            unsigned int sx, sy, msx, msy;
-            int ox, oy;
-            Display *dpy = theApp->display ();
-
-            w = XtWindow ((theApp->mainWindow ())->mainWindowWidget ());
-            XGetGeometry (dpy, w, &rw, &ox, &oy, &msx, &msy, &border, &depth);
-
-            wmLeft = wmRight = wmTop = wmBottom = 0;
-
-            Window pw, c[100];
-            unsigned int cn;
-
-            do{
-              XQueryTree (dpy, w, &rw, &pw, (Window **) &c, &cn);
-              XGetGeometry (dpy, w, &rw, &ox, &oy, &sx, &sy, &border, &depth);
-              printf ("Window 0x%p [%4dx%4d] +[%4d,%4d], border %4d\n", w, sx, sy, ox, oy, border);
-              if(pw != rw){
-                wmLeft += ox;
-                wmTop += oy;
-                }
-              w = pw;
-              }
-            while(w != rw);
-            wmRight  = (sx - msx - wmLeft);
-            wmBottom = (sy - msy - wmTop);
-            printf ("WM Borders l:%d r:%d t:%d b:%d\n", wmLeft, wmRight, wmTop, wmBottom);
-
-      One thing that I would find useful, if you do eventually add code
-      to fox to determine these sizes, that you make the values accessible
-      to the API in the rare case that someone needs them.
-
-
-    Theo Veenker <theo.veenker@let.uu.nl>
-
-  - We need new toolbar layout modes:
-
-      +--------+---+----------+----+
-      |  bar1  |///|  bar2    |////|
-      +--------+---+-------+--+----+
-      |      bar3          |///////|
-      +--------------------+-------+
-
-  - Do not assume root window is at (0,0); multi-monitor machines may
-    have secondary monitor anywhere relative to primary display.
-
 */
 
 // Definitions for Motif-style WM Hints.
@@ -162,6 +106,8 @@ FXDEFMAP(FXTopWindow) FXTopWindowMap[]={
   FXMAPFUNC(SEL_FOCUS_DOWN,0,FXTopWindow::onFocusDown),
   FXMAPFUNC(SEL_FOCUS_LEFT,0,FXTopWindow::onFocusLeft),
   FXMAPFUNC(SEL_FOCUS_RIGHT,0,FXTopWindow::onFocusRight),
+  FXMAPFUNC(SEL_SESSION_NOTIFY,0,FXTopWindow::onSessionNotify),
+  FXMAPFUNC(SEL_SESSION_CLOSED,0,FXTopWindow::onSessionClosed),
   FXMAPFUNC(SEL_CHORE,FXTopWindow::ID_CLOSE,FXTopWindow::onCmdClose),
   FXMAPFUNC(SEL_SIGNAL,FXTopWindow::ID_CLOSE,FXTopWindow::onCmdClose),
   FXMAPFUNC(SEL_TIMEOUT,FXTopWindow::ID_CLOSE,FXTopWindow::onCmdClose),
@@ -180,9 +126,22 @@ FXDEFMAP(FXTopWindow) FXTopWindowMap[]={
 FXIMPLEMENT_ABSTRACT(FXTopWindow,FXShell,FXTopWindowMap,ARRAYNUMBER(FXTopWindowMap))
 
 
+// Deserialization
+FXTopWindow::FXTopWindow(){
+  icon=NULL;
+  miniIcon=NULL;
+  padtop=0;
+  padbottom=0;
+  padleft=0;
+  padright=0;
+  hspacing=0;
+  vspacing=0;
+  }
+
+
 // Create toplevel window object & add to toplevel window list
-FXTopWindow::FXTopWindow(FXApp* a,const FXString& name,FXIcon *ic,FXIcon *mi,FXuint opts,FXint x,FXint y,FXint w,FXint h,FXint pl,FXint pr,FXint pt,FXint pb,FXint hs,FXint vs):
-  FXShell(a,opts,x,y,w,h){
+FXTopWindow::FXTopWindow(FXApp* ap,const FXString& name,FXIcon *ic,FXIcon *mi,FXuint opts,FXint x,FXint y,FXint w,FXint h,FXint pl,FXint pr,FXint pt,FXint pb,FXint hs,FXint vs):
+  FXShell(ap,opts,x,y,w,h){
   title=name;
   icon=ic;
   miniIcon=mi;
@@ -197,8 +156,8 @@ FXTopWindow::FXTopWindow(FXApp* a,const FXString& name,FXIcon *ic,FXIcon *mi,FXu
 
 
 // Create toplevel window object & add to toplevel window list
-FXTopWindow::FXTopWindow(FXWindow* own,const FXString& name,FXIcon *ic,FXIcon *mi,FXuint opts,FXint x,FXint y,FXint w,FXint h,FXint pl,FXint pr,FXint pt,FXint pb,FXint hs,FXint vs):
-  FXShell(own,opts,x,y,w,h){
+FXTopWindow::FXTopWindow(FXWindow* ow,const FXString& name,FXIcon *ic,FXIcon *mi,FXuint opts,FXint x,FXint y,FXint w,FXint h,FXint pl,FXint pr,FXint pt,FXint pb,FXint hs,FXint vs):
+  FXShell(ow,opts,x,y,w,h){
   title=name;
   icon=ic;
   miniIcon=mi;
@@ -225,15 +184,19 @@ void FXTopWindow::create(){
   if(icon) icon->create();
   if(miniIcon) miniIcon->create();
 
+  // Register string types
+  if(!utf8Type){ utf8Type=getApp()->registerDragType(utf8TypeName); }
+
   if(xid){
     if(getApp()->isInitialized()){
 
 #ifndef WIN32
       // Catch delete window
-      Atom protocols[2];
+      Atom protocols[3];
       protocols[0]=getApp()->wmDeleteWindow;
       protocols[1]=getApp()->wmTakeFocus;
-      XSetWMProtocols(DISPLAY(getApp()),xid,protocols,2);
+      protocols[2]=getApp()->wmNetPing;
+      XSetWMProtocols(DISPLAY(getApp()),xid,protocols,3);
 
       // Set position for Window Manager
       XSizeHints size;
@@ -311,6 +274,25 @@ void FXTopWindow::detach(){
   }
 
 
+// Destroy window
+void FXTopWindow::destroy(){
+  if(xid){
+    if(getApp()->isInitialized()){
+#ifdef WIN32
+      HICON icold;
+      if((icold=(HICON)SendMessage((HWND)xid,WM_SETICON,ICON_BIG,0))!=0){
+        DestroyIcon(icold);
+        }
+      if((icold=(HICON)SendMessage((HWND)xid,WM_SETICON,ICON_SMALL,0))!=0){
+        DestroyIcon(icold);
+        }
+#endif
+      }
+    }
+  FXShell::destroy();
+  }
+
+
 // Focus to this toplevel window
 void FXTopWindow::setFocus(){
   FXShell::setFocus();
@@ -318,7 +300,8 @@ void FXTopWindow::setFocus(){
 #ifndef WIN32
     XSetInputFocus(DISPLAY(getApp()),xid,RevertToPointerRoot,CurrentTime);
 #else
-    SetFocus((HWND)xid);
+    //SetFocus((HWND)xid);
+    SetActiveWindow((HWND)xid);
 #endif
     }
   }
@@ -343,6 +326,7 @@ void FXTopWindow::killFocus(){
         }
       }
 #else
+/*
     if(GetFocus()==(HWND)xid){
       if(getOwner() && getOwner()->id()){
         FXTRACE((100,"focus back to owner\n"));
@@ -351,6 +335,14 @@ void FXTopWindow::killFocus(){
       else{
         FXTRACE((100,"focus back to NULL\n"));
         SetFocus((HWND)NULL);
+        }
+      }
+*/
+    if(GetActiveWindow()==(HWND)xid){
+      if(getOwner() && getOwner()->id()){
+        FXTRACE((100,"focus back to owner\n"));
+        SetActiveWindow((HWND)getOwner()->getShell()->id());        // Fix from Sander
+        //SetForegroundWindow((HWND)getOwner()->getShell()->id());
         }
       }
 #endif
@@ -384,9 +376,23 @@ void FXTopWindow::hide(){
 #ifndef WIN32
       XWithdrawWindow(DISPLAY(getApp()),xid,DefaultScreen(DISPLAY(getApp())));
 #else
+//      if(getOwner() && getOwner()->id()){
+//        SetActiveWindow((HWND)getOwner()->getShell()->id());  // Fix from Sander
+//        }
       ShowWindow((HWND)xid,SW_HIDE);
 #endif
       }
+    }
+  }
+
+
+// Raise and make foreground window
+void FXTopWindow::raise(){
+  FXShell::raise();
+  if(xid){
+#ifdef WIN32
+    SetForegroundWindow((HWND)xid);
+#endif
     }
   }
 
@@ -410,12 +416,7 @@ void FXTopWindow::place(FXuint placement){
   rw=getRoot()->getWidth();
   rh=getRoot()->getHeight();
 #else
-  OSVERSIONINFO vinfo;
   RECT rect;
-  memset(&vinfo,0,sizeof(vinfo));
-  vinfo.dwOSVersionInfoSize=sizeof(vinfo);
-  GetVersionEx(&vinfo);
-
 #if (WINVER >= 0x500) || ((defined _WIN32_WINDOWS) && (_WIN32_WINDOWS >= 0x410))
   HINSTANCE user32;
   typedef BOOL (WINAPI* PFN_GETMONITORINFOA)(HMONITOR, LPMONITORINFO);
@@ -427,8 +428,9 @@ void FXTopWindow::place(FXuint placement){
   // The API does not exist on older Windows NT and 95, so
   // We can't even link it, let alone call it.
   // The solution is to ask the DLL if the function exists.
-  if((user32=LoadLibrary("User32")) && (GetMonitorInfoA=reinterpret_cast<PFN_GETMONITORINFOA>(GetProcAddress(user32,"GetMonitorInfoA"))) && (MonitorFromRectA=reinterpret_cast<PFN_MONITORFROMRECTA>(GetProcAddress(user32,"MonitorFromRectA")))){
-    MONITORINFOEX minfo;
+  // And another patch from Lothar Scholtz; now it works!
+  if((user32=LoadLibraryA("User32")) && (GetMonitorInfoA=reinterpret_cast<PFN_GETMONITORINFOA>(GetProcAddress(user32,"GetMonitorInfoA"))) && (MonitorFromRectA=reinterpret_cast<PFN_MONITORFROMRECTA>(GetProcAddress(user32,"MonitorFromRect")))){
+    MONITORINFOEXA minfo;
     HMONITOR hMon;
     if(placement == PLACEMENT_CURSOR){
       // Use mouse position to select screen.
@@ -455,8 +457,8 @@ void FXTopWindow::place(FXuint placement){
     GetMonitorInfoA(hMon,&minfo);
     rx=minfo.rcWork.left;
     ry=minfo.rcWork.top;
-    rw=minfo.rcWork.right;
-    rh=minfo.rcWork.bottom;
+    rw=minfo.rcWork.right-minfo.rcWork.left;
+    rh=minfo.rcWork.bottom-minfo.rcWork.top;
     }
   else
 #endif
@@ -567,31 +569,11 @@ void FXTopWindow::place(FXuint placement){
     case PLACEMENT_DEFAULT:
     default:
       break;
-      }
+    }
 
   // Place it
   position(wx,wy,ww,wh);
   }
-
-
-#ifdef WIN32
-
-
-// Make HICON from FXIcon
-void* FXTopWindow::makeicon(FXIcon* icon){
-  ICONINFO iconinfo;
-  iconinfo.fIcon=TRUE;
-  iconinfo.xHotspot=0;
-  iconinfo.yHotspot=0;
-  iconinfo.hbmMask=(HBITMAP)icon->shape;
-  iconinfo.hbmColor=(HBITMAP)icon->xid;
-  void* wicon=CreateIconIndirect(&iconinfo);
-  return wicon;
-  }
-
-
-#endif
-
 
 
 // Set large icon(s)
@@ -627,16 +609,36 @@ void FXTopWindow::seticons(){
 
   // Set both large and mini icon for MS-Windows
 #else
+  HICON icold,icnew;
+  icnew=NULL;
   if(icon){
-    if(!icon->xid || !icon->shape){ fxerror("%s::setIcon: illegal icon specified.\n",getClassName()); }
-    SendMessage((HWND)xid,WM_SETICON,ICON_BIG,(LPARAM)makeicon(icon));
+    ICONINFO iconinfo;
+    iconinfo.fIcon=TRUE;
+    iconinfo.xHotspot=0;
+    iconinfo.yHotspot=0;
+    iconinfo.hbmMask=(HBITMAP)icon->shape;
+    iconinfo.hbmColor=(HBITMAP)icon->xid;
+    icnew=CreateIconIndirect(&iconinfo);
     }
+  if((icold=(HICON)SendMessage((HWND)xid,WM_SETICON,ICON_BIG,(LPARAM)icnew))!=0){
+    DestroyIcon(icold);
+    }
+  icnew=NULL;
   if(miniIcon){
-    if(!miniIcon->xid || !miniIcon->shape){ fxerror("%s::setMiniIcon: illegal icon specified.\n",getClassName()); }
-    SendMessage((HWND)xid,WM_SETICON,ICON_SMALL,(LPARAM)makeicon(miniIcon));
+    ICONINFO iconinfo;
+    iconinfo.fIcon=TRUE;
+    iconinfo.xHotspot=0;
+    iconinfo.yHotspot=0;
+    iconinfo.hbmMask=(HBITMAP)miniIcon->shape;
+    iconinfo.hbmColor=(HBITMAP)miniIcon->xid;
+    icnew=CreateIconIndirect(&iconinfo);
+    }
+  if((icold=(HICON)SendMessage((HWND)xid,WM_SETICON,ICON_SMALL,(LPARAM)icnew))!=0){
+    DestroyIcon(icold);
     }
 #endif
   }
+
 
 
 // Set title
@@ -646,13 +648,23 @@ void FXTopWindow::settitle(){
     XTextProperty t;
     char *s;
     s=(char*)title.text();
-    if(XStringListToTextProperty((char**)&s,1,&t)){
+    if(XStringListToTextProperty((char**)&s,1,&t)){     // FIXME encode to iso8859-1?
       XSetWMIconName(DISPLAY(getApp()),xid,&t);
       XSetWMName(DISPLAY(getApp()),xid,&t);
       XFree(t.value);
       }
+
+    // Extended window manager hint for true unicode name in title
+    XChangeProperty(DISPLAY(getApp()),xid,getApp()->wmNetIconName,utf8Type,8,PropModeReplace,(unsigned char*)title.text(),title.length());
+    XChangeProperty(DISPLAY(getApp()),xid,getApp()->wmNetWindowName,utf8Type,8,PropModeReplace,(unsigned char*)title.text(),title.length());
 #else
-    SetWindowText((HWND)xid,title.text());
+#ifdef UNICODE
+    FXnchar titlewide[1024];
+    utf2ncs(titlewide,title.text(),title.length()+1);
+    SetWindowTextW((HWND)xid,titlewide);
+#else
+    SetWindowTextA((HWND)xid,title.text());
+#endif
 #endif
     }
   }
@@ -721,7 +733,7 @@ void FXTopWindow::setdecorations(){
   // Set new style
   SetWindowLong((HWND)xid,GWL_STYLE,dwStyle);
 
-  // Patch from Stephane Ancelot <sancelot@wanadoo.fr> and Sander Jansen <sxj@cfdrc.com>
+  // Patch from Stephane Ancelot <sancelot@wanadoo.fr> and Sander Jansen <sander@knology.net>
   HMENU sysmenu=GetSystemMenu((HWND)xid,FALSE);
   if(sysmenu){
     if(options&DECOR_CLOSE)
@@ -739,6 +751,45 @@ void FXTopWindow::setdecorations(){
   SetWindowPos((HWND)xid,NULL,0,0,FXMAX(rect.right-rect.left,1),FXMAX(rect.bottom-rect.top,1),SWP_NOMOVE|SWP_NOZORDER|SWP_NOOWNERZORDER);
   RedrawWindow((HWND)xid,NULL,NULL,RDW_FRAME|RDW_INVALIDATE);
 #endif
+  }
+
+
+// Obtain border sizes added to our window by the window manager
+FXbool FXTopWindow::getWMBorders(FXint& left,FXint& right,FXint& top,FXint& bottom){
+  left=right=top=bottom=0;
+  if(xid){
+#ifdef WIN32
+#if(WINVER >= 0x0500)
+    WINDOWINFO wi;
+    GetWindowInfo((HWND)xid,&wi);
+    left=wi.rcClient.left-wi.rcWindow.left;
+    top=wi.rcClient.top-wi.rcWindow.top;
+    right=wi.rcWindow.right-wi.rcClient.right;
+    bottom=wi.rcWindow.bottom-wi.rcClient.bottom;
+#endif
+#else
+    unsigned int sx,sy,msx,msy,cn,border,depth;
+    Window w,rw,pw,*cw;
+    int ox,oy;
+    w=xid;
+    XGetGeometry(DISPLAY(getApp()),w,&rw,&ox,&oy,&msx,&msy,&border,&depth);
+    do{
+      XQueryTree(DISPLAY(getApp()),w,&rw,&pw,&cw,&cn);
+      XFree(cw);
+      XGetGeometry(DISPLAY(getApp()),w,&rw,&ox,&oy,&sx,&sy,&border,&depth);
+      if(pw!=rw){
+        left+=ox;
+        top+=oy;
+        }
+      w=pw;
+      }
+    while(w!=rw);
+    right=(sx-msx-left);
+    bottom=(sy-msy-top);
+#endif
+    return TRUE;
+    }
+  return FALSE;
   }
 
 
@@ -785,7 +836,7 @@ FXbool FXTopWindow::maximize(FXbool notify){
       ShowWindow((HWND)xid,SW_MAXIMIZE);
 #endif
       }
-    if(notify && target){target->handle(this,FXSEL(SEL_MAXIMIZE,message),NULL);}
+    if(notify && target && message){target->tryHandle(this,FXSEL(SEL_MAXIMIZE,message),NULL);}
     return TRUE;
     }
   return FALSE;
@@ -802,7 +853,7 @@ FXbool FXTopWindow::minimize(FXbool notify){
       ShowWindow((HWND)xid,SW_MINIMIZE);
 #endif
       }
-    if(notify && target){target->handle(this,FXSEL(SEL_MINIMIZE,message),NULL);}
+    if(notify && target && message){target->tryHandle(this,FXSEL(SEL_MINIMIZE,message),NULL);}
     return TRUE;
     }
   return FALSE;
@@ -835,7 +886,7 @@ FXbool FXTopWindow::restore(FXbool notify){
       ShowWindow((HWND)xid,SW_RESTORE);
 #endif
       }
-    if(notify && target){target->handle(this,FXSEL(SEL_RESTORE,message),NULL);}
+    if(notify && target && message){target->tryHandle(this,FXSEL(SEL_RESTORE,message),NULL);}
     return TRUE;
     }
   return FALSE;
@@ -847,7 +898,7 @@ FXbool FXTopWindow::close(FXbool notify){
   register FXWindow *window;
 
   // Ask target if desired
-  if(!notify || !target || !target->handle(this,FXSEL(SEL_CLOSE,message),NULL)){
+  if(!notify || !target || !message || !target->tryHandle(this,FXSEL(SEL_CLOSE,message),NULL)){
 
     // Target will receive no further messages from us
     setTarget(NULL);
@@ -910,16 +961,16 @@ FXbool FXTopWindow::isMinimized() const {
   if(xid){
 #ifndef WIN32
     unsigned long length,after;
-    unsigned char *data;
+    unsigned char *prop;
     Atom actualtype;
     int actualformat;
 
     // This is ICCCM compliant method to ask about WM_STATE
-    if(Success==XGetWindowProperty(DISPLAY(getApp()),xid,getApp()->wmState,0,2,FALSE,AnyPropertyType,&actualtype,&actualformat,&length,&after,&data)){
+    if(Success==XGetWindowProperty(DISPLAY(getApp()),xid,getApp()->wmState,0,2,FALSE,AnyPropertyType,&actualtype,&actualformat,&length,&after,&prop)){
       if(actualformat==32){
-        minimized=(IconicState==*((FXuint*)data));
+        minimized=(IconicState==*((FXuint*)prop));
         }
-      XFree((char*)data);
+      XFree((char*)prop);
       }
 #else
     minimized=IsIconic((HWND)xid);
@@ -966,7 +1017,6 @@ void FXTopWindow::resize(FXint w,FXint h){
       cw.width=width;
       cw.height=height;
       XReconfigureWMWindow(DISPLAY(getApp()),xid,DefaultScreen(DISPLAY(getApp())),CWWidth|CWHeight,&cw);
-//    XResizeWindow(DISPLAY(getApp()),xid,w,h);
 #else
       // Calculate the required window size based on the desired
       // size of the *client* rectangle.
@@ -998,7 +1048,6 @@ void FXTopWindow::position(FXint x,FXint y,FXint w,FXint h){
       cw.width=width;
       cw.height=height;
       XReconfigureWMWindow(DISPLAY(getApp()),xid,DefaultScreen(DISPLAY(getApp())),CWX|CWY|CWWidth|CWHeight,&cw);
-//    XMoveResizeWindow(DISPLAY(getApp()),xid,x,y,w,h);
 #else
       // Calculate the required window position & size based on the desired
       // position & size of the *client* rectangle.
@@ -1017,10 +1066,10 @@ void FXTopWindow::position(FXint x,FXint y,FXint w,FXint h){
 
 // Compute minimum width based on child layout hints
 FXint FXTopWindow::getDefaultWidth(){
-  register FXint w,wcum,wmax,mw=0;
+  register FXint w,wcum,wmax,mw;
   register FXWindow* child;
   register FXuint hints;
-  wmax=wcum=0;
+  wmax=wcum=mw=0;
   if(options&PACK_UNIFORM_WIDTH) mw=maxChildWidth();
   for(child=getLast(); child; child=child->getPrev()){
     if(child->shown()){
@@ -1041,16 +1090,17 @@ FXint FXTopWindow::getDefaultWidth(){
         }
       }
     }
-  return padleft+padright+FXMAX(wcum,wmax);
+  wcum+=padleft+padright;
+  return FXMAX(wcum,wmax);
   }
 
 
 // Compute minimum height based on child layout hints
 FXint FXTopWindow::getDefaultHeight(){
-  register FXint h,hcum,hmax,mh=0;
+  register FXint h,hcum,hmax,mh;
   register FXWindow* child;
   register FXuint hints;
-  hmax=hcum=0;
+  hmax=hcum=mh=0;
   if(options&PACK_UNIFORM_HEIGHT) mh=maxChildHeight();
   for(child=getLast(); child; child=child->getPrev()){
     if(child->shown()){
@@ -1071,7 +1121,8 @@ FXint FXTopWindow::getDefaultHeight(){
         }
       }
     }
-  return padtop+padbottom+FXMAX(hcum,hmax);
+  hcum+=padtop+padbottom;
+  return FXMAX(hcum,hmax);
   }
 
 
@@ -1233,6 +1284,20 @@ long FXTopWindow::onCmdClose(FXObject*,FXSelector,void*){
   }
 
 
+// Session is about to close, give opportunity to save data
+long FXTopWindow::onSessionNotify(FXObject*,FXSelector,void* ptr){
+  return target && message && target->tryHandle(this,FXSEL(SEL_SESSION_NOTIFY,message),ptr);
+  }
+
+
+// Session has closed, close the window with prejudice
+long FXTopWindow::onSessionClosed(FXObject*,FXSelector,void* ptr){
+  if(target && message) target->tryHandle(this,FXSEL(SEL_SESSION_CLOSED,message),ptr);
+  close(FALSE);
+  return 1;
+  }
+
+
 // Focus moved up
 long FXTopWindow::onFocusUp(FXObject*,FXSelector,void* ptr){
   FXWindow *child,*c;
@@ -1361,12 +1426,30 @@ long FXTopWindow::onFocusRight(FXObject*,FXSelector,void* ptr){
   }
 
 
-
 // Change regular icon
 void FXTopWindow::setIcon(FXIcon* ic){
   if(icon!=ic){
     icon=ic;
-    if(xid) seticons();
+    if(xid){
+#ifdef WIN32
+      HICON icold=NULL;
+      HICON icnew=NULL;
+      if(icon){
+        ICONINFO iconinfo;
+        iconinfo.fIcon=TRUE;
+        iconinfo.xHotspot=0;
+        iconinfo.yHotspot=0;
+        iconinfo.hbmMask=(HBITMAP)icon->shape;
+        iconinfo.hbmColor=(HBITMAP)icon->xid;
+        icnew=CreateIconIndirect(&iconinfo);
+        }
+      if((icold=(HICON)SendMessage((HWND)xid,WM_SETICON,ICON_BIG,(LPARAM)icnew))!=0){
+        DestroyIcon(icold);
+        }
+#else
+      seticons();
+#endif
+      }
     }
   }
 
@@ -1375,9 +1458,29 @@ void FXTopWindow::setIcon(FXIcon* ic){
 void FXTopWindow::setMiniIcon(FXIcon *ic){
   if(miniIcon!=ic){
     miniIcon=ic;
-    if(xid) seticons();
+    if(xid){
+#ifdef WIN32
+      HICON icold=NULL;
+      HICON icnew=NULL;
+      if(miniIcon){
+        ICONINFO iconinfo;
+        iconinfo.fIcon=TRUE;
+        iconinfo.xHotspot=0;
+        iconinfo.yHotspot=0;
+        iconinfo.hbmMask=(HBITMAP)miniIcon->shape;
+        iconinfo.hbmColor=(HBITMAP)miniIcon->xid;
+        icnew=CreateIconIndirect(&iconinfo);
+        }
+      if((icold=(HICON)SendMessage((HWND)xid,WM_SETICON,ICON_SMALL,(LPARAM)icnew))!=0){
+        DestroyIcon(icold);
+        }
+#else
+      seticons();
+#endif
+      }
     }
   }
+
 
 
 // Set new window title
@@ -1465,14 +1568,19 @@ void FXTopWindow::setVSpacing(FXint vs){
     }
   }
 
+
 // Save object to stream
 void FXTopWindow::save(FXStream& store) const {
   FXShell::save(store);
   store << title;
   store << icon;
   store << miniIcon;
-  store << padtop << padbottom << padleft << padright;
-  store << hspacing << vspacing;
+  store << padtop;
+  store << padbottom;
+  store << padleft;
+  store << padright;
+  store << hspacing;
+  store << vspacing;
   }
 
 
@@ -1482,13 +1590,26 @@ void FXTopWindow::load(FXStream& store){
   store >> title;
   store >> icon;
   store >> miniIcon;
-  store >> padtop >> padbottom >> padleft >> padright;
-  store >> hspacing >> vspacing;
+  store >> padtop;
+  store >> padbottom;
+  store >> padleft;
+  store >> padright;
+  store >> hspacing;
+  store >> vspacing;
   }
 
 
 // Remove this one from toplevel window list
 FXTopWindow::~FXTopWindow(){
+#ifdef WIN32
+  HICON icold;
+  if((icold=(HICON)SendMessage((HWND)xid,WM_SETICON,ICON_BIG,0))!=0){
+    DestroyIcon(icold);
+    }
+  if((icold=(HICON)SendMessage((HWND)xid,WM_SETICON,ICON_SMALL,0))!=0){
+    DestroyIcon(icold);
+    }
+#endif
   icon=(FXIcon*)-1L;
   miniIcon=(FXIcon*)-1L;
   }

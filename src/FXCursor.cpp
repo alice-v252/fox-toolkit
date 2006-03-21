@@ -3,7 +3,7 @@
 *                         C u r s o r - O b j e c t                             *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,11 +19,13 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXCursor.cpp,v 1.50.2.1 2004/08/28 01:10:02 fox Exp $                        *
+* $Id: FXCursor.cpp,v 1.62 2006/01/22 17:58:21 fox Exp $                        *
 ********************************************************************************/
 #include "xincs.h"
 #include "fxver.h"
 #include "fxdefs.h"
+#include "FXHash.h"
+#include "FXThread.h"
 #include "FXStream.h"
 #include "FXString.h"
 #include "FXSize.h"
@@ -31,11 +33,11 @@
 #include "FXRectangle.h"
 #include "FXSettings.h"
 #include "FXRegistry.h"
-#include "FXHash.h"
 #include "FXApp.h"
 #include "FXId.h"
 #include "FXVisual.h"
 #include "FXCursor.h"
+#include "FXException.h"
 
 
 /*
@@ -58,7 +60,7 @@ using namespace FX;
 
 namespace FX {
 
-extern FXbool fxloadXBM(FXColor*& data,const FXuchar *pixels,const FXuchar *mask,FXint width,FXint height);
+extern bool fxloadXBM(FXColor*& data,const FXuchar *pixels,const FXuchar *mask,FXint width,FXint height);
 
 
 // Standard colors
@@ -118,24 +120,24 @@ FXCursor::FXCursor(FXApp* a,const FXColor *pix,FXint w,FXint h,FXint hx,FXint hy
 
 
 // Return TRUE if color cursor
-FXbool FXCursor::isColor() const {
+bool FXCursor::isColor() const {
   register FXint i;
   if(data){
     for(i=width*height-1; 0<=i; i--){
-      if(data[i]!=black && data[i]!=white && FXALPHAVAL(data[i])!=0) return TRUE;
+      if(data[i]!=black && data[i]!=white && FXALPHAVAL(data[i])!=0) return true;
       }
     }
-  return FALSE;
+  return false;
   }
 
 
 #ifdef WIN32
 
-static FXbool supportsColorCursors(){
+static bool supportsColorCursors(){
 
   // Try calling GetVersionEx using the OSVERSIONINFOEX structure.
   // If that fails, try using the OSVERSIONINFO structure.
-#if defined (__WATCOMC__)
+#if defined (__WATCOMC__) || (__DMC__)
   OSVERSIONINFO osvi={sizeof(OSVERSIONINFO)};
 #else
   OSVERSIONINFOEX osvi={sizeof(OSVERSIONINFOEX)};
@@ -145,16 +147,16 @@ static FXbool supportsColorCursors(){
     // If OSVERSIONINFOEX doesn't work, try OSVERSIONINFO.
     osvi.dwOSVersionInfoSize=sizeof(OSVERSIONINFO);
     if(!GetVersionEx((OSVERSIONINFO*)&osvi)){
-      return FALSE; // should not happen
+      return false; // should not happen
       }
     }
   if(osvi.dwPlatformId==VER_PLATFORM_WIN32_NT){
     if(osvi.dwMajorVersion==5 && osvi.dwMinorVersion>=0 || osvi.dwMajorVersion>5){
-      return TRUE;
+      return true;
       }
     }
 
-  return FALSE;
+  return false;
   }
 
 
@@ -236,7 +238,9 @@ void FXCursor::create(){
             dstoffset+=dstbytes;
             }
           srcpix=XCreateBitmapFromData(DISPLAY(getApp()),XDefaultRootWindow(DISPLAY(getApp())),(char*)shapebits,width,height);
+          if(!srcpix){ throw FXImageException("unable to create cursor"); }
           mskpix=XCreateBitmapFromData(DISPLAY(getApp()),XDefaultRootWindow(DISPLAY(getApp())),(char*)maskbits,width,height);
+          if(!mskpix){ throw FXImageException("unable to create cursor"); }
           xid=XCreatePixmapCursor(DISPLAY(getApp()),srcpix,mskpix,&color[0],&color[1],hotx,hoty);
           XFreePixmap(DISPLAY(getApp()),srcpix);
           XFreePixmap(DISPLAY(getApp()),mskpix);
@@ -280,7 +284,7 @@ void FXCursor::create(){
           HDC hdc=GetDC(NULL);
           img=CreateDIBSection(hdc,(BITMAPINFO*)&bi,DIB_RGB_COLORS,&imgdata,NULL,0);
           ReleaseDC(NULL,hdc);
-          if(!img){ fxerror("%s::create: unable to create cursor.\n",getClassName()); }
+          if(!img){ throw FXImageException("unable to create cursor"); }
 
           // Fill in data
           FXuint *imgptr=(FXuint*)imgdata;
@@ -298,6 +302,7 @@ void FXCursor::create(){
 
           // Strawman mask bitmap
           mask=CreateBitmap(32,32,1,1,NULL);
+          if(!mask){ throw FXImageException("unable to create cursor"); }
 
           // Create cursor
           ii.fIcon=FALSE;
@@ -314,9 +319,8 @@ void FXCursor::create(){
 
         // No support for color cursor or simple black/white cursor
         else{
-          FXint i,j,srcbytes,srcoffset,dstoffset; FXuchar tmpxor[128],tmpand[128];
+          FXint i,j,srcoffset,dstoffset; FXuchar tmpxor[128],tmpand[128];
           FXTRACE((100,"%s::create: custom b/w %dx%d cursor\n",getClassName(),width,height));
-          srcbytes=(width+7)/8;
           srcoffset=dstoffset=0;
           memset(tmpand,0xff,sizeof(tmpand));
           memset(tmpxor,0,sizeof(tmpxor));
@@ -339,7 +343,7 @@ void FXCursor::create(){
 #endif
 
       // Were we successful?
-      if(!xid){ fxerror("%s::create: unable to create cursor.\n",getClassName()); }
+      if(!xid){ throw FXImageException("unable to create cursor"); }
 
       // Release pixel buffer
       if(!(options&CURSOR_KEEP)) release();
@@ -389,21 +393,21 @@ void FXCursor::destroy(){
 
 
 // Save pixel data only
-FXbool FXCursor::savePixels(FXStream& store) const {
+bool FXCursor::savePixels(FXStream& store) const {
   FXuint size=width*height;
   store.save(data,size);
-  return TRUE;
+  return true;
   }
 
 
 // Load pixel data only
-FXbool FXCursor::loadPixels(FXStream& store){
+bool FXCursor::loadPixels(FXStream& store){
   FXuint size=width*height;
   if(options&CURSOR_OWNED){FXFREE(&data);}
-  if(!FXMALLOC(&data,FXColor,size)) return FALSE;
+  if(!FXMALLOC(&data,FXColor,size)) return false;
   store.load(data,size);
   options|=CURSOR_OWNED;
-  return TRUE;
+  return true;
   }
 
 

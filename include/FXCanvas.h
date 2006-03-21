@@ -3,7 +3,7 @@
 *                          C a n v a s   W i d g e t                            *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1997,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1997,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXCanvas.h,v 1.17 2004/02/08 17:17:33 fox Exp $                          *
+* $Id: FXCanvas.h,v 1.21 2006/01/22 17:57:59 fox Exp $                          *
 ********************************************************************************/
 #ifndef FXCANVAS_H
 #define FXCANVAS_H
@@ -41,16 +41,13 @@ private:
   FXCanvas &operator=(const FXCanvas&);
 public:
   long onPaint(FXObject*,FXSelector,void*);
-  long onMotion(FXObject*,FXSelector,void*);
-  long onKeyPress(FXObject*,FXSelector,void*);
-  long onKeyRelease(FXObject*,FXSelector,void*);
 public:
 
   /// Construct new drawing canvas widget
   FXCanvas(FXComposite* p,FXObject* tgt=NULL,FXSelector sel=0,FXuint opts=FRAME_NORMAL,FXint x=0,FXint y=0,FXint w=0,FXint h=0);
 
   /// Return TRUE because canvas can receive focus
-  virtual FXbool canFocus() const;
+  virtual bool canFocus() const;
   };
 
 }

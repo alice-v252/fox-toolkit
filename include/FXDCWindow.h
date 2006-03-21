@@ -3,7 +3,7 @@
 *  D e v i c e   C o n t e x t   F o r   W i n d o w s   a n d   I m a g e s    *
 *                                                                               *
 *********************************************************************************
-* Copyright (C) 1999,2004 by Jeroen van der Zijp.   All Rights Reserved.        *
+* Copyright (C) 1999,2006 by Jeroen van der Zijp.   All Rights Reserved.        *
 *********************************************************************************
 * This library is free software; you can redistribute it and/or                 *
 * modify it under the terms of the GNU Lesser General Public                    *
@@ -19,7 +19,7 @@
 * License along with this library; if not, write to the Free Software           *
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.    *
 *********************************************************************************
-* $Id: FXDCWindow.h,v 1.38 2004/01/21 07:09:58 fox Exp $                        *
+* $Id: FXDCWindow.h,v 1.46 2006/01/22 17:58:00 fox Exp $                        *
 ********************************************************************************/
 #ifndef FXDCWINDOW_H
 #define FXDCWINDOW_H
@@ -50,6 +50,7 @@ class FXVisual;
 * locked on a drawable at any one time.
 */
 class FXAPI FXDCWindow : public FXDC {
+  friend class FXFont;
 protected:
   FXDrawable *surface;        // Drawable surface
   FXVisual   *visual;         // Visual of drawable
@@ -113,13 +114,22 @@ public:
   virtual void drawRectangle(FXint x,FXint y,FXint w,FXint h);
   virtual void drawRectangles(const FXRectangle* rectangles,FXuint nrectangles);
 
+  /// Draw rounded rectangle with ellipse with ew and ellips height eh
+  virtual void drawRoundRectangle(FXint x,FXint y,FXint w,FXint h,FXint ew,FXint eh);
+
   /// Draw arcs
   virtual void drawArc(FXint x,FXint y,FXint w,FXint h,FXint ang1,FXint ang2);
   virtual void drawArcs(const FXArc* arcs,FXuint narcs);
 
+  /// Draw ellipse
+  virtual void drawEllipse(FXint x,FXint y,FXint w,FXint h);
+
   /// Filled rectangles
   virtual void fillRectangle(FXint x,FXint y,FXint w,FXint h);
   virtual void fillRectangles(const FXRectangle* rectangles,FXuint nrectangles);
+
+  /// Filled rounded rectangle with ellipse with ew and ellips height eh
+  virtual void fillRoundRectangle(FXint x,FXint y,FXint w,FXint h,FXint ew,FXint eh);
 
   /// Fill chord
   virtual void fillChord(FXint x,FXint y,FXint w,FXint h,FXint ang1,FXint ang2);
@@ -128,6 +138,9 @@ public:
   /// Draw arcs
   virtual void fillArc(FXint x,FXint y,FXint w,FXint h,FXint ang1,FXint ang2);
   virtual void fillArcs(const FXArc* arcs,FXuint narcs);
+
+  /// Fill ellipse
+  virtual void fillEllipse(FXint x,FXint y,FXint w,FXint h);
 
   /// Filled polygon
   virtual void fillPolygon(const FXPoint* points,FXuint npoints);
@@ -148,6 +161,9 @@ public:
   /// Draw area from source
   virtual void drawArea(const FXDrawable* source,FXint sx,FXint sy,FXint sw,FXint sh,FXint dx,FXint dy);
 
+  /// Draw area stretched area from source
+  virtual void drawArea(const FXDrawable* source,FXint sx,FXint sy,FXint sw,FXint sh,FXint dx,FXint dy,FXint dw,FXint dh);
+
   /// Draw image
   virtual void drawImage(const FXImage* image,FXint dx,FXint dy);
 
@@ -159,8 +175,12 @@ public:
   virtual void drawIconShaded(const FXIcon* icon,FXint dx,FXint dy);
   virtual void drawIconSunken(const FXIcon* icon,FXint dx,FXint dy);
 
-  /// Draw string
+  /// Draw string with base line starting at x, y
+  virtual void drawText(FXint x,FXint y,const FXString& string);
   virtual void drawText(FXint x,FXint y,const FXchar* string,FXuint length);
+
+  /// Draw text starting at x, y over filled background
+  virtual void drawImageText(FXint x,FXint y,const FXString& string);
   virtual void drawImageText(FXint x,FXint y,const FXchar* string,FXuint length);
 
   /// Set foreground/background drawing color
